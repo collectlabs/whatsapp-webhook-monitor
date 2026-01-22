@@ -149,21 +149,36 @@ async function processAutomaticResponses(
           messageType: event.message_type,
         });
 
+        console.log('[AUTO_RESPONSE] Chamando sendWhatsAppMessage com:', {
+          phoneNumberId,
+          to: event.from_number,
+          messageLength: responseConfig.default_message.length,
+          messagePreview: responseConfig.default_message.substring(0, 50) + '...',
+        });
+
         const result = await sendWhatsAppMessage({
           phoneNumberId: phoneNumberId,
           to: event.from_number,
           message: responseConfig.default_message,
         });
 
+        console.log('[AUTO_RESPONSE] Resultado do envio:', {
+          success: result.success,
+          messageId: result.messageId,
+          error: result.error,
+          to: event.from_number,
+        });
+
         if (result.success) {
-          console.log('[AUTO_RESPONSE] Resposta automática enviada com sucesso:', {
+          console.log('[AUTO_RESPONSE] ✅ Resposta automática enviada com sucesso:', {
             to: event.from_number,
             messageId: result.messageId,
           });
         } else {
-          console.error('[AUTO_RESPONSE] Erro ao enviar resposta automática:', {
+          console.error('[AUTO_RESPONSE] ❌ Erro ao enviar resposta automática:', {
             to: event.from_number,
             error: result.error,
+            phoneNumberId,
           });
         }
       } catch (error) {

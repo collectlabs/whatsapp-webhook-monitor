@@ -71,11 +71,16 @@ export async function sendWhatsAppMessage(
   };
 
   try {
-    console.log('[WHATSAPP_SENDER] Enviando mensagem:', {
+    console.log('[WHATSAPP_SENDER] Preparando envio de mensagem:', {
       phoneNumberId,
       to,
       messageLength: message.length,
+      url,
+      hasToken: !!accessToken,
+      tokenLength: accessToken?.length || 0,
     });
+
+    console.log('[WHATSAPP_SENDER] Payload da requisição:', JSON.stringify(payload, null, 2));
 
     const response = await fetch(url, {
       method: 'POST',
@@ -86,15 +91,47 @@ export async function sendWhatsAppMessage(
       body: JSON.stringify(payload),
     });
 
-    const data: WhatsAppApiResponse = await response.json();
+    console.log('[WHATSAPP_SENDER] Resposta recebida:', {
+      status: response.status,
+      statusText: response.statusText,
+      ok: response.ok,
+      headers: Object.fromEntries(response.headers.entries()),
+    });
+
+    const responseText = await response.text();
+    console.log('[WHATSAPP_SENDER] Corpo da resposta (raw):', responseText);
+
+    let data: WhatsAppApiResponse;
+    try {
+      data = JSON.parse(responseText);
+    } catch (parseError) {
+      console.error('[WHATSAPP_SENDER] Erro ao fazer parse da resposta JSON:', {
+        responseText,
+        error: parseError,
+      });
+      return {
+        success: false,
+        error: `Resposta inválida da API: ${responseText.substring(0, 200)}`,
+      };
+    }
+
+    console.log('[WHATSAPP_SENDER] Resposta parseada:', JSON.stringify(data, null, 2));
 
     if (!response.ok || data.error) {
       const errorMessage = data.error?.message || `HTTP ${response.status}`;
+      const errorCode = data.error?.code;
+      const errorType = data.error?.type;
+      
       console.error('[WHATSAPP_SENDER] Erro ao enviar mensagem:', {
         status: response.status,
+        statusText: response.statusText,
         error: data.error,
-        response: data,
+        errorMessage,
+        errorCode,
+        errorType,
+        fullResponse: data,
       });
+      
       return {
         success: false,
         error: errorMessage,
@@ -105,6 +142,8 @@ export async function sendWhatsAppMessage(
     console.log('[WHATSAPP_SENDER] Mensagem enviada com sucesso:', {
       messageId,
       to,
+      contacts: data.contacts,
+      messagingProduct: data.messaging_product,
     });
 
     return {
@@ -112,7 +151,11 @@ export async function sendWhatsAppMessage(
       messageId,
     };
   } catch (error) {
-    console.error('[WHATSAPP_SENDER] Erro ao enviar mensagem:', error);
+    console.error('[WHATSAPP_SENDER] Erro inesperado ao enviar mensagem:', {
+      error: error instanceof Error ? error.message : 'Erro desconhecido',
+      stack: error instanceof Error ? error.stack : undefined,
+      errorType: error instanceof Error ? error.constructor.name : typeof error,
+    });
     return {
       success: false,
       error: error instanceof Error ? error.message : 'Erro desconhecido',
