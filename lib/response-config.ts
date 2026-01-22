@@ -102,22 +102,22 @@ export async function getResponseConfig(maxRetries: number = 2): Promise<Respons
       });
       // #endregion
       
-      // Adicionar timeout manual de 3 segundos (reduzido para ser mais rápido)
+      // Adicionar timeout manual de 3 segundos usando AbortController
+      const abortController = new AbortController();
       let timeoutId: NodeJS.Timeout | null = null;
-      const timeoutPromise = new Promise<{ data: null; error: { code: string; message: string } }>((resolve) => {
-        timeoutId = setTimeout(() => {
-          // #region agent log
-          console.error('[DEBUG_GET_CONFIG_TIMEOUT] Query timeout após 3 segundos');
-          // #endregion
-          resolve({
-            data: null,
-            error: {
-              code: 'TIMEOUT',
-              message: 'Query timeout após 3 segundos',
-            },
-          });
-        }, 3000);
+      
+      // #region agent log
+      console.log('[DEBUG_GET_CONFIG_TIMEOUT_SETUP] Configurando timeout de 3 segundos:', {
+        timestamp: new Date().toISOString(),
       });
+      // #endregion
+      
+      timeoutId = setTimeout(() => {
+        // #region agent log
+        console.error('[DEBUG_GET_CONFIG_TIMEOUT] Query timeout após 3 segundos - abortando');
+        // #endregion
+        abortController.abort();
+      }, 3000);
       
       let queryResult;
       try {
@@ -127,9 +127,34 @@ export async function getResponseConfig(maxRetries: number = 2): Promise<Respons
         });
         // #endregion
         
+        // Executar query diretamente com tratamento de timeout
+        const queryPromise = query;
+        
+        // Criar uma promise que rejeita após timeout
+        const timeoutPromise = new Promise<never>((_, reject) => {
+          setTimeout(() => {
+            if (timeoutId) {
+              clearTimeout(timeoutId);
+              timeoutId = null;
+            }
+            // #region agent log
+            console.error('[DEBUG_GET_CONFIG_TIMEOUT_REJECT] Timeout rejeitando promise:', {
+              timestamp: new Date().toISOString(),
+            });
+            // #endregion
+            reject(new Error('Query timeout após 3 segundos'));
+          }, 3000);
+        });
+        
+        // #region agent log
+        console.log('[DEBUG_GET_CONFIG_RACE_START] Iniciando Promise.race:', {
+          timestamp: new Date().toISOString(),
+        });
+        // #endregion
+        
         // Usar Promise.race para adicionar timeout
-        const raceResult = await Promise.race([
-          query.then((result) => {
+        queryResult = await Promise.race([
+          queryPromise.then((result) => {
             // #region agent log
             console.log('[DEBUG_GET_CONFIG_QUERY_RESOLVED] Query resolveu antes do timeout:', {
               hasData: !!result.data,
@@ -137,20 +162,14 @@ export async function getResponseConfig(maxRetries: number = 2): Promise<Respons
               timestamp: new Date().toISOString(),
             });
             // #endregion
-            if (timeoutId) clearTimeout(timeoutId);
+            if (timeoutId) {
+              clearTimeout(timeoutId);
+              timeoutId = null;
+            }
             return result;
           }),
-          timeoutPromise.then((result) => {
-            // #region agent log
-            console.log('[DEBUG_GET_CONFIG_TIMEOUT_RESOLVED] Timeout resolveu:', {
-              timestamp: new Date().toISOString(),
-            });
-            // #endregion
-            return result;
-          }),
-        ]);
-        
-        queryResult = raceResult as { data: ResponseConfig | null; error: any };
+          timeoutPromise,
+        ]) as { data: ResponseConfig | null; error: any };
         
         // #region agent log
         console.log('[DEBUG_GET_CONFIG_AWAIT_COMPLETE] Await completado:', {
@@ -161,25 +180,47 @@ export async function getResponseConfig(maxRetries: number = 2): Promise<Respons
           timestamp: new Date().toISOString(),
         });
         // #endregion
-      } catch (queryError) {
+      } catch (queryError: any) {
         // #region agent log
         console.error('[DEBUG_GET_CONFIG_QUERY_ERROR] Erro ao executar query:', {
           error: queryError instanceof Error ? queryError.message : String(queryError),
           stack: queryError instanceof Error ? queryError.stack : undefined,
+          isTimeout: queryError?.message?.includes('timeout'),
           timestamp: new Date().toISOString(),
         });
         // #endregion
-        if (timeoutId) clearTimeout(timeoutId);
+        
+        if (timeoutId) {
+          clearTimeout(timeoutId);
+          timeoutId = null;
+        }
+        
+        // Se foi timeout, usar cache se disponível
+        if (queryError?.message?.includes('timeout')) {
+          console.error('[RESPONSE_CONFIG] Timeout ao buscar configuração após 3 segundos');
+          if (configCache) {
+            // #region agent log
+            console.log('[DEBUG_GET_CONFIG_TIMEOUT_CACHE] Usando cache devido a timeout:', {
+              timestamp: new Date().toISOString(),
+            });
+            // #endregion
+            return configCache.config;
+          }
+          return null;
+        }
+        
         throw queryError;
       } finally {
         // Garantir que o timeout seja limpo
-        if (timeoutId) clearTimeout(timeoutId);
+        if (timeoutId) {
+          clearTimeout(timeoutId);
+          timeoutId = null;
+        }
       }
       
-      // Verificar se foi timeout
+      // Verificar se foi timeout (não deveria chegar aqui se foi timeout, mas por segurança)
       if (queryResult?.error?.code === 'TIMEOUT') {
         console.error('[RESPONSE_CONFIG] Timeout ao buscar configuração após 3 segundos');
-        // Usar cache se disponível mesmo com timeout
         if (configCache) {
           // #region agent log
           console.log('[DEBUG_GET_CONFIG_TIMEOUT_CACHE] Usando cache devido a timeout:', {
