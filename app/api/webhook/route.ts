@@ -201,11 +201,23 @@ async function processAutomaticResponses(
           });
           // #endregion
           
-          result = await sendWhatsAppMessage({
+          // Criar a Promise antes de await para verificar se está sendo criada
+          const sendPromise = sendWhatsAppMessage({
             phoneNumberId: phoneNumberId,
             to: event.from_number,
             message: responseConfig.default_message,
           });
+          
+          // #region agent log
+          console.log('[DEBUG_PROMISE_CREATED] Promise criada:', {
+            hasPromise: !!sendPromise,
+            isPromise: sendPromise instanceof Promise,
+            timestamp: new Date().toISOString(),
+            hypothesisId: 'C',
+          });
+          // #endregion
+          
+          result = await sendPromise;
           
           // #region agent log
           console.log('[DEBUG_AFTER_AWAIT] Depois do await sendWhatsAppMessage:', {
@@ -446,8 +458,30 @@ export async function POST(request: NextRequest) {
 
     // Processar respostas automáticas para mensagens de clientes
     // Fazer de forma assíncrona para não bloquear a resposta do webhook
-    processAutomaticResponses(body, allEventsData).catch((error) => {
-      console.error('[AUTO_RESPONSE] Erro ao processar respostas automáticas:', error);
+    // #region agent log
+    console.log('[DEBUG_STARTING_PROCESS] Iniciando processAutomaticResponses:', {
+      hasBody: !!body,
+      eventsCount: allEventsData.length,
+      timestamp: new Date().toISOString(),
+    });
+    // #endregion
+    
+    const processPromise = processAutomaticResponses(body, allEventsData);
+    
+    // #region agent log
+    console.log('[DEBUG_PROCESS_PROMISE] Promise de processAutomaticResponses criada:', {
+      hasPromise: !!processPromise,
+      isPromise: processPromise instanceof Promise,
+      timestamp: new Date().toISOString(),
+    });
+    // #endregion
+    
+    processPromise.catch((error) => {
+      console.error('[AUTO_RESPONSE] Erro ao processar respostas automáticas:', {
+        error: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined,
+        fullError: JSON.stringify(error, Object.getOwnPropertyNames(error)),
+      });
       // Não propagar o erro para não afetar o webhook
     });
 
