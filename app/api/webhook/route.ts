@@ -144,22 +144,32 @@ async function processAutomaticResponses(
     // Usar Promise.allSettled para não bloquear se uma falhar
     const responsePromises = clientMessages.map(async (event) => {
       try {
-        console.log('[AUTO_RESPONSE] Enviando resposta automática para:', {
+        console.log('[AUTO_RESPONSE] 🔄 Iniciando processamento para evento:', {
           from: event.from_number,
           messageType: event.message_type,
+          messageId: event.message_id,
         });
 
-        console.log('[AUTO_RESPONSE] Chamando sendWhatsAppMessage com:', {
+        console.log('[AUTO_RESPONSE] 📋 Parâmetros antes de chamar sendWhatsAppMessage:', {
           phoneNumberId,
           to: event.from_number,
           messageLength: responseConfig.default_message.length,
           messagePreview: responseConfig.default_message.substring(0, 50) + '...',
+          hasResponseConfig: !!responseConfig,
+          responseConfigId: responseConfig.id,
         });
 
+        console.log('[AUTO_RESPONSE] 📞 Chamando sendWhatsAppMessage agora...');
+        
         const result = await sendWhatsAppMessage({
           phoneNumberId: phoneNumberId,
           to: event.from_number,
           message: responseConfig.default_message,
+        });
+
+        console.log('[AUTO_RESPONSE] ✅ sendWhatsAppMessage retornou:', {
+          hasResult: !!result,
+          resultType: typeof result,
         });
 
         console.log('[AUTO_RESPONSE] Resultado do envio:', {

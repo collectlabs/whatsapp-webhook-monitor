@@ -34,6 +34,14 @@ interface WhatsAppApiResponse {
 export async function sendWhatsAppMessage(
   params: SendMessageParams
 ): Promise<{ success: boolean; messageId?: string; error?: string }> {
+  console.log('[WHATSAPP_SENDER] ⚡ Função sendWhatsAppMessage chamada!', {
+    params: {
+      phoneNumberId: params.phoneNumberId,
+      to: params.to,
+      messageLength: params.message?.length || 0,
+    },
+  });
+
   const { phoneNumberId, to, message } = params;
 
   // Validar token de acesso
