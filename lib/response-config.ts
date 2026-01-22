@@ -73,23 +73,45 @@ export async function getResponseConfig(maxRetries: number = 2): Promise<Respons
       console.log('[DEBUG_GET_CONFIG_QUERY_CREATED] Query criada, aguardando resultado:', {
         hasQuery: !!query,
         isPromise: query instanceof Promise,
+        hasThen: typeof (query as any)?.then === 'function',
         timestamp: new Date().toISOString(),
       });
       // #endregion
       
+      // Adicionar timeout manual de 5 segundos
+      const timeoutPromise = new Promise<{ data: null; error: { code: string; message: string } }>((resolve) => {
+        setTimeout(() => {
+          console.error('[DEBUG_GET_CONFIG_TIMEOUT] Query timeout após 5 segundos');
+          resolve({
+            data: null,
+            error: {
+              code: 'TIMEOUT',
+              message: 'Query timeout após 5 segundos',
+            },
+          });
+        }, 5000);
+      });
+      
       let queryResult;
       try {
         // #region agent log
-        console.log('[DEBUG_GET_CONFIG_AWAITING] Aguardando resultado da query:', {
+        console.log('[DEBUG_GET_CONFIG_AWAITING] Aguardando resultado da query (com timeout):', {
           timestamp: new Date().toISOString(),
         });
         // #endregion
         
-        queryResult = await query;
+        // Usar Promise.race para adicionar timeout
+        queryResult = await Promise.race([
+          query,
+          timeoutPromise,
+        ]) as { data: ResponseConfig | null; error: any };
         
         // #region agent log
         console.log('[DEBUG_GET_CONFIG_AWAIT_COMPLETE] Await completado:', {
           hasResult: !!queryResult,
+          hasData: !!queryResult?.data,
+          hasError: !!queryResult?.error,
+          errorCode: queryResult?.error?.code,
           timestamp: new Date().toISOString(),
         });
         // #endregion
@@ -102,6 +124,12 @@ export async function getResponseConfig(maxRetries: number = 2): Promise<Respons
         });
         // #endregion
         throw queryError;
+      }
+      
+      // Verificar se foi timeout
+      if (queryResult?.error?.code === 'TIMEOUT') {
+        console.error('[RESPONSE_CONFIG] Timeout ao buscar configuração após 5 segundos');
+        return null;
       }
       
       const { data, error } = queryResult;
