@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
+import { getSupabaseClient } from '@/lib/supabase';
 import {
   WhatsAppWebhookPayload,
 } from '@/types/webhook';
@@ -56,6 +56,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Salvar todas as mensagens no Supabase
+    const supabase = getSupabaseClient();
     const insertPromises = messagesData.map((messageData) =>
       supabase.from('whatsapp_messages').insert({
         message_id: messageData.message_id,
