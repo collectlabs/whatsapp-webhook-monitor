@@ -69,9 +69,11 @@ export async function POST(request: NextRequest) {
   try {
     const body: WhatsAppWebhookPayload = await request.json();
 
-    console.log('Webhook POST recebido:', {
+    console.log('[DEBUG] Webhook POST recebido:', {
       object: body.object,
       entriesCount: body.entry?.length || 0,
+      hasEntries: !!body.entry,
+      timestamp: new Date().toISOString(),
     });
 
     // Validar estrutura básica do payload
@@ -87,7 +89,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Log detalhado do payload para debug
-    console.log('Processando webhook whatsapp_business_account:', {
+    const payloadDetails = {
       entries: body.entry.map((entry) => ({
         id: entry.id,
         changes: entry.changes.map((change) => ({
@@ -97,25 +99,47 @@ export async function POST(request: NextRequest) {
           messagesCount: change.value?.messages?.length || 0,
           statusesCount: change.value?.statuses?.length || 0,
           allFields: Object.keys(change.value),
+          // Capturar estrutura completa de mensagens interativas
+          messages: change.value?.messages?.map((msg: any) => ({
+            type: msg.type,
+            hasInteractive: !!msg.interactive,
+            interactiveType: msg.interactive?.type,
+            interactiveKeys: msg.interactive ? Object.keys(msg.interactive) : [],
+            // Log completo da mensagem interativa para debug
+            interactiveFull: msg.interactive ? JSON.stringify(msg.interactive) : null,
+          })) || [],
         })),
       })),
-    });
+    };
+
+    console.log('[DEBUG] Payload detalhado antes do processamento:', JSON.stringify(payloadDetails, null, 2));
+    console.log('[DEBUG] Payload completo (raw):', JSON.stringify(body, null, 2));
 
     // Extrair e processar TODOS os eventos (messages, statuses, e qualquer outro tipo)
     const allEventsData = processWebhookPayload(body);
 
-    console.log(`Eventos extraídos: ${allEventsData.length}`, {
+    console.log(`[DEBUG] Eventos extraídos: ${allEventsData.length}`, {
       events: allEventsData.map((event) => ({
         message_id: event.message_id,
         from: event.from_number,
         type: event.message_type,
+        body: event.message_body,
       })),
     });
 
     // Salvar TODOS os eventos, mesmo que não haja nenhum
     // Isso garante que capturamos tudo que chegar no webhook
     if (allEventsData.length === 0) {
-      console.log('Nenhum evento encontrado no webhook - salvando payload bruto completo');
+      console.log('[DEBUG] Nenhum evento encontrado no webhook - salvando payload bruto completo');
+      console.log('[DEBUG] Estrutura do payload que não gerou eventos:', {
+        entryCount: body.entry?.length,
+        changes: body.entry?.flatMap(e => e.changes.map(c => ({
+          field: c.field,
+          valueKeys: Object.keys(c.value || {}),
+          hasMessages: !!c.value?.messages,
+          hasStatuses: !!c.value?.statuses,
+        }))),
+      });
       
       // Salvar o payload bruto completo mesmo sem eventos específicos
       const supabase = getSupabaseClient();
@@ -125,14 +149,14 @@ export async function POST(request: NextRequest) {
         to_number: body.entry[0]?.changes[0]?.value?.metadata?.phone_number_id || 'unknown',
         timestamp: Math.floor(Date.now() / 1000),
         message_type: 'raw_webhook',
-        message_body: null,
+        message_body: `Nenhum evento processado. Payload completo salvo para análise.`,
         raw_payload: body as any,
       });
 
       if (result.error) {
-        console.error('Erro ao salvar payload bruto:', result.error);
+        console.error('[DEBUG] Erro ao salvar payload bruto:', result.error);
       } else {
-        console.log('Payload bruto salvo com sucesso');
+        console.log('[DEBUG] Payload bruto salvo com sucesso no banco');
       }
 
       return new NextResponse('OK', { status: 200 });
@@ -141,6 +165,13 @@ export async function POST(request: NextRequest) {
     // Salvar TODOS os eventos no Supabase (messages, statuses, e qualquer outro tipo)
     const supabase = getSupabaseClient();
     const insertPromises = allEventsData.map(async (eventData) => {
+      console.log('[DEBUG] Tentando salvar evento no Supabase:', {
+        message_id: eventData.message_id,
+        message_type: eventData.message_type,
+        from: eventData.from_number,
+        body: eventData.message_body,
+      });
+
       const result = await supabase.from('whatsapp_messages').insert({
         message_id: eventData.message_id,
         from_number: eventData.from_number,
@@ -151,9 +182,17 @@ export async function POST(request: NextRequest) {
         raw_payload: eventData.raw_payload as any, // Payload completo e bruto
       });
 
+      console.log('[DEBUG] Resultado do insert no Supabase:', {
+        message_id: eventData.message_id,
+        hasError: !!result.error,
+        errorMessage: result.error?.message,
+        errorCode: result.error?.code,
+        errorDetails: result.error?.details,
+      });
+
       // Verificar se há erro na resposta do Supabase
       if (result.error) {
-        console.error('Erro ao salvar evento:', {
+        console.error('[DEBUG] Erro ao salvar evento:', {
           message_id: eventData.message_id,
           message_type: eventData.message_type,
           error: result.error,

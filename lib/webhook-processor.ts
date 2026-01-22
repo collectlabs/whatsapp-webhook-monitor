@@ -30,6 +30,15 @@ export function extractMessageData(
       messageBody += ` - ${message.location.name}`;
     }
   } else if (message.type === 'interactive' && message.interactive) {
+    console.log('[DEBUG] Mensagem interativa detectada:', {
+      messageType: message.type,
+      interactiveType: message.interactive?.type,
+      interactiveKeys: message.interactive ? Object.keys(message.interactive) : [],
+      hasCtaReply: !!message.interactive?.cta_reply,
+      hasCtaUrlReply: !!message.interactive?.cta_url_reply,
+      interactiveFull: JSON.stringify(message.interactive),
+    });
+
     // Processar mensagens interativas (cliques em botões)
     const interactive = message.interactive;
     
@@ -39,10 +48,24 @@ export function extractMessageData(
     } else if (interactive.type === 'cta_url') {
       // Botão CTA URL clicado - verificar ambos os nomes de campo
       const ctaReply = interactive.cta_url_reply || interactive.cta_reply;
+      
+      console.log('[DEBUG] Processando CTA URL:', {
+        interactiveType: interactive.type,
+        hasCtaReply: !!interactive.cta_reply,
+        hasCtaUrlReply: !!interactive.cta_url_reply,
+        ctaReplyData: ctaReply ? JSON.stringify(ctaReply) : null,
+        allInteractiveKeys: Object.keys(interactive),
+      });
+
       if (ctaReply) {
         messageBody = `CTA URL clicado: "${ctaReply.title}" (Payload: ${ctaReply.payload})`;
       } else {
         // Fallback: logar que foi detectado mas sem dados
+        console.log('[DEBUG] CTA URL detectado mas sem dados de reply:', {
+          interactiveType: interactive.type,
+          interactiveKeys: Object.keys(interactive),
+          interactiveValue: JSON.stringify(interactive),
+        });
         messageBody = `CTA URL clicado (dados não disponíveis)`;
       }
     } else if (interactive.type === 'list_reply' && interactive.list_reply) {
@@ -50,6 +73,10 @@ export function extractMessageData(
       messageBody = `Item selecionado: "${interactive.list_reply.title}" (ID: ${interactive.list_reply.id})`;
     } else {
       // Fallback para outros tipos de interação
+      console.log('[DEBUG] Tipo de interação desconhecido:', {
+        interactiveType: interactive.type,
+        interactiveKeys: Object.keys(interactive),
+      });
       messageBody = `Interação do tipo: ${interactive.type}`;
     }
   }
@@ -99,6 +126,18 @@ export function processWebhookPayload(
 
       // Processar mensagens (se existirem)
       if (change.value.messages && Array.isArray(change.value.messages)) {
+        console.log('[DEBUG] Processando array de mensagens:', {
+          messagesCount: change.value.messages.length,
+          messageTypes: change.value.messages.map((m: any) => m.type),
+          interactiveMessages: change.value.messages
+            .filter((m: any) => m.type === 'interactive')
+            .map((m: any) => ({
+              type: m.type,
+              interactiveType: m.interactive?.type,
+              interactiveKeys: m.interactive ? Object.keys(m.interactive) : [],
+            })),
+        });
+
         for (const message of change.value.messages) {
           const messageData = extractMessageData(
             message,
