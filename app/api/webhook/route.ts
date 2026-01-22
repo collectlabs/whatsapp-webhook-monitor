@@ -12,7 +12,7 @@ console.log('[DEBUG_IMPORT] Verificando import de sendWhatsAppMessage:', {
   hasSendWhatsAppMessage: typeof sendWhatsAppMessage !== 'undefined',
   isFunction: typeof sendWhatsAppMessage === 'function',
   type: typeof sendWhatsAppMessage,
-  value: sendWhatsAppMessage ? 'defined' : 'undefined',
+  value: typeof sendWhatsAppMessage !== 'undefined' ? 'defined' : 'undefined',
   hypothesisId: 'A',
 });
 // #endregion
