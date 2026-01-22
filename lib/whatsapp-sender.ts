@@ -35,7 +35,15 @@ export async function sendWhatsAppMessage(
   params: SendMessageParams
 ): Promise<{ success: boolean; messageId?: string; error?: string }> {
   // #region agent log
-  fetch('http://127.0.0.1:7243/ingest/bcc78ab0-226b-408e-9be5-e85475e37b10',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'whatsapp-sender.ts:37',message:'Function entry',data:{hasParams:!!params,phoneNumberId:params?.phoneNumberId,to:params?.to,hasMessage:!!params?.message},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+  console.log('[DEBUG_FUNCTION_ENTRY] sendWhatsAppMessage ENTRADA:', {
+    hasParams: !!params,
+    phoneNumberId: params?.phoneNumberId,
+    to: params?.to,
+    hasMessage: !!params?.message,
+    messageLength: params?.message?.length,
+    timestamp: new Date().toISOString(),
+    hypothesisId: 'B',
+  });
   // #endregion
   
   console.log('[WHATSAPP_SENDER] ⚡ Função sendWhatsAppMessage chamada!', {
@@ -47,30 +55,50 @@ export async function sendWhatsAppMessage(
   });
 
   // #region agent log
-  fetch('http://127.0.0.1:7243/ingest/bcc78ab0-226b-408e-9be5-e85475e37b10',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'whatsapp-sender.ts:45',message:'After console.log, before destructuring',data:{hasParams:!!params},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+  console.log('[DEBUG_AFTER_CONSOLE] Depois do console.log, antes da desestruturação:', {
+    hasParams: !!params,
+    hypothesisId: 'B',
+  });
   // #endregion
 
   const { phoneNumberId, to, message } = params;
   
   // #region agent log
-  fetch('http://127.0.0.1:7243/ingest/bcc78ab0-226b-408e-9be5-e85475e37b10',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'whatsapp-sender.ts:50',message:'After destructuring',data:{phoneNumberId,to,hasMessage:!!message,messageLength:message?.length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+  console.log('[DEBUG_AFTER_DESTRUCT] Depois da desestruturação:', {
+    phoneNumberId,
+    to,
+    hasMessage: !!message,
+    messageLength: message?.length,
+    hypothesisId: 'B',
+  });
   // #endregion
 
   // #region agent log
-  fetch('http://127.0.0.1:7243/ingest/bcc78ab0-226b-408e-9be5-e85475e37b10',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'whatsapp-sender.ts:54',message:'Before token validation',data:{hasProcessEnv:typeof process!=='undefined',hasEnv:typeof process?.env!=='undefined'},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+  console.log('[DEBUG_BEFORE_TOKEN] Antes da validação do token:', {
+    hasProcessEnv: typeof process !== 'undefined',
+    hasEnv: typeof process?.env !== 'undefined',
+    hypothesisId: 'B',
+  });
   // #endregion
   
   // Validar token de acesso
   const accessToken = process.env.WHATSAPP_ACCESS_TOKEN;
   
   // #region agent log
-  fetch('http://127.0.0.1:7243/ingest/bcc78ab0-226b-408e-9be5-e85475e37b10',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'whatsapp-sender.ts:60',message:'After token check',data:{hasAccessToken:!!accessToken,tokenLength:accessToken?.length||0},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+  console.log('[DEBUG_AFTER_TOKEN_CHECK] Depois da verificação do token:', {
+    hasAccessToken: !!accessToken,
+    tokenLength: accessToken?.length || 0,
+    tokenPreview: accessToken ? `${accessToken.substring(0, 10)}...` : 'undefined',
+    hypothesisId: 'B',
+  });
   // #endregion
   
   if (!accessToken) {
     console.error('[WHATSAPP_SENDER] WHATSAPP_ACCESS_TOKEN não está configurado');
     // #region agent log
-    fetch('http://127.0.0.1:7243/ingest/bcc78ab0-226b-408e-9be5-e85475e37b10',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'whatsapp-sender.ts:66',message:'Token missing, returning error',data:{},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+    console.log('[DEBUG_TOKEN_MISSING] Token ausente, retornando erro:', {
+      hypothesisId: 'B',
+    });
     // #endregion
     return {
       success: false,
