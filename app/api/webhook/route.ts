@@ -89,18 +89,78 @@ async function processAutomaticResponses(
       payloadEntries: payload.entry?.length || 0,
     });
 
+    // #region agent log
+    console.log('[DEBUG_BEFORE_GET_CONFIG] Antes de buscar getResponseConfig:', {
+      timestamp: new Date().toISOString(),
+    });
+    // #endregion
+
     // Buscar configuração de resposta automática
-    const responseConfig = await getResponseConfig();
+    let responseConfig;
+    try {
+      // #region agent log
+      console.log('[DEBUG_CALLING_GET_CONFIG] Chamando getResponseConfig agora:', {
+        timestamp: new Date().toISOString(),
+      });
+      // #endregion
+      
+      responseConfig = await getResponseConfig();
+      
+      // #region agent log
+      console.log('[DEBUG_AFTER_GET_CONFIG] Depois de getResponseConfig:', {
+        hasResponseConfig: !!responseConfig,
+        responseConfigId: responseConfig?.id,
+        enabled: responseConfig?.enabled,
+        hasMessage: !!responseConfig?.default_message,
+        timestamp: new Date().toISOString(),
+      });
+      // #endregion
+    } catch (configError) {
+      // #region agent log
+      console.error('[DEBUG_GET_CONFIG_ERROR] Erro ao buscar getResponseConfig:', {
+        error: configError instanceof Error ? configError.message : String(configError),
+        stack: configError instanceof Error ? configError.stack : undefined,
+        timestamp: new Date().toISOString(),
+      });
+      // #endregion
+      throw configError;
+    }
     
     if (!responseConfig) {
       console.log('[AUTO_RESPONSE] Resposta automática desabilitada ou não configurada');
+      // #region agent log
+      console.log('[DEBUG_NO_CONFIG] Sem configuração, retornando:', {
+        timestamp: new Date().toISOString(),
+      });
+      // #endregion
       return;
     }
 
+    // #region agent log
+    console.log('[DEBUG_AFTER_CONFIG_CHECK] Depois da verificação de config:', {
+      hasResponseConfig: !!responseConfig,
+      timestamp: new Date().toISOString(),
+    });
+    // #endregion
+
     // Extrair phone_number_id do payload
     const phoneNumberId = payload.entry[0]?.changes[0]?.value?.metadata?.phone_number_id;
+    
+    // #region agent log
+    console.log('[DEBUG_PHONE_NUMBER_ID] Verificando phone_number_id:', {
+      phoneNumberId,
+      hasPhoneNumberId: !!phoneNumberId,
+      timestamp: new Date().toISOString(),
+    });
+    // #endregion
+    
     if (!phoneNumberId) {
       console.warn('[AUTO_RESPONSE] phone_number_id não encontrado no payload');
+      // #region agent log
+      console.log('[DEBUG_NO_PHONE_ID] Sem phone_number_id, retornando:', {
+        timestamp: new Date().toISOString(),
+      });
+      // #endregion
       return;
     }
 

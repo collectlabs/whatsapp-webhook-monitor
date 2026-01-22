@@ -20,12 +20,40 @@ export interface ResponseConfig {
  * @returns Configuração ativa ou null se não houver configuração habilitada
  */
 export async function getResponseConfig(maxRetries: number = 2): Promise<ResponseConfig | null> {
+  // #region agent log
+  console.log('[DEBUG_GET_CONFIG_ENTRY] getResponseConfig chamada:', {
+    maxRetries,
+    timestamp: new Date().toISOString(),
+  });
+  // #endregion
+  
   let lastError: any = null;
 
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     try {
+      // #region agent log
+      console.log('[DEBUG_GET_CONFIG_ATTEMPT] Tentativa de buscar config:', {
+        attempt: attempt + 1,
+        maxRetries: maxRetries + 1,
+        timestamp: new Date().toISOString(),
+      });
+      // #endregion
+      
       const supabase = getSupabaseClient();
+      
+      // #region agent log
+      console.log('[DEBUG_GET_CONFIG_SUPABASE] Cliente Supabase obtido:', {
+        hasSupabase: !!supabase,
+        timestamp: new Date().toISOString(),
+      });
+      // #endregion
 
+      // #region agent log
+      console.log('[DEBUG_GET_CONFIG_QUERY] Executando query no Supabase:', {
+        timestamp: new Date().toISOString(),
+      });
+      // #endregion
+      
       // Buscar configuração
       const { data, error } = await supabase
         .from('response_config')
@@ -33,6 +61,16 @@ export async function getResponseConfig(maxRetries: number = 2): Promise<Respons
         .eq('enabled', true)
         .limit(1)
         .single();
+      
+      // #region agent log
+      console.log('[DEBUG_GET_CONFIG_RESULT] Resultado da query:', {
+        hasData: !!data,
+        hasError: !!error,
+        errorCode: error?.code,
+        errorMessage: error?.message,
+        timestamp: new Date().toISOString(),
+      });
+      // #endregion
 
       if (error) {
         // Se não encontrar nenhum registro, não é um erro crítico
