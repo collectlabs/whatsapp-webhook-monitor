@@ -54,13 +54,34 @@ export async function getResponseConfig(maxRetries: number = 2): Promise<Respons
       });
       // #endregion
       
-      // Buscar configuração
-      const { data, error } = await supabase
+      // Buscar configuração com timeout
+      const queryPromise = supabase
         .from('response_config')
         .select('*')
         .eq('enabled', true)
         .limit(1)
         .single();
+      
+      // Adicionar timeout de 10 segundos
+      const timeoutPromise = new Promise<{ data: null; error: { code: string; message: string } }>((resolve) => {
+        setTimeout(() => {
+          resolve({
+            data: null,
+            error: {
+              code: 'TIMEOUT',
+              message: 'Query timeout após 10 segundos',
+            },
+          });
+        }, 10000);
+      });
+      
+      // #region agent log
+      console.log('[DEBUG_GET_CONFIG_RACE] Iniciando race entre query e timeout:', {
+        timestamp: new Date().toISOString(),
+      });
+      // #endregion
+      
+      const { data, error } = await Promise.race([queryPromise, timeoutPromise]);
       
       // #region agent log
       console.log('[DEBUG_GET_CONFIG_RESULT] Resultado da query:', {

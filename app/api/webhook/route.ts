@@ -517,7 +517,8 @@ export async function POST(request: NextRequest) {
     );
 
     // Processar respostas automáticas para mensagens de clientes
-    // Fazer de forma assíncrona para não bloquear a resposta do webhook
+    // IMPORTANTE: Não usar await aqui para não bloquear a resposta do webhook
+    // Mas garantir que a função execute completamente usando setImmediate
     // #region agent log
     console.log('[DEBUG_STARTING_PROCESS] Iniciando processAutomaticResponses:', {
       hasBody: !!body,
@@ -526,23 +527,30 @@ export async function POST(request: NextRequest) {
     });
     // #endregion
     
-    const processPromise = processAutomaticResponses(body, allEventsData);
-    
-    // #region agent log
-    console.log('[DEBUG_PROCESS_PROMISE] Promise de processAutomaticResponses criada:', {
-      hasPromise: !!processPromise,
-      isPromise: processPromise instanceof Promise,
-      timestamp: new Date().toISOString(),
-    });
-    // #endregion
-    
-    processPromise.catch((error) => {
-      console.error('[AUTO_RESPONSE] Erro ao processar respostas automáticas:', {
-        error: error instanceof Error ? error.message : String(error),
-        stack: error instanceof Error ? error.stack : undefined,
-        fullError: JSON.stringify(error, Object.getOwnPropertyNames(error)),
-      });
-      // Não propagar o erro para não afetar o webhook
+    // Usar setImmediate para garantir que a função execute após o retorno do webhook
+    // Isso evita que a execução seja cancelada quando o webhook retorna
+    setImmediate(async () => {
+      try {
+        // #region agent log
+        console.log('[DEBUG_SETIMMEDIATE] Executando processAutomaticResponses dentro de setImmediate:', {
+          timestamp: new Date().toISOString(),
+        });
+        // #endregion
+        
+        await processAutomaticResponses(body, allEventsData);
+        
+        // #region agent log
+        console.log('[DEBUG_SETIMMEDIATE_COMPLETE] processAutomaticResponses concluído:', {
+          timestamp: new Date().toISOString(),
+        });
+        // #endregion
+      } catch (error) {
+        console.error('[AUTO_RESPONSE] Erro ao processar respostas automáticas:', {
+          error: error instanceof Error ? error.message : String(error),
+          stack: error instanceof Error ? error.stack : undefined,
+          fullError: JSON.stringify(error, Object.getOwnPropertyNames(error)),
+        });
+      }
     });
 
     // Sempre retornar 200 OK para a Meta, mesmo se houver erros
