@@ -34,6 +34,10 @@ interface WhatsAppApiResponse {
 export async function sendWhatsAppMessage(
   params: SendMessageParams
 ): Promise<{ success: boolean; messageId?: string; error?: string }> {
+  // #region agent log
+  fetch('http://127.0.0.1:7243/ingest/bcc78ab0-226b-408e-9be5-e85475e37b10',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'whatsapp-sender.ts:37',message:'Function entry',data:{hasParams:!!params,phoneNumberId:params?.phoneNumberId,to:params?.to,hasMessage:!!params?.message},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+  // #endregion
+  
   console.log('[WHATSAPP_SENDER] ⚡ Função sendWhatsAppMessage chamada!', {
     params: {
       phoneNumberId: params.phoneNumberId,
@@ -42,12 +46,32 @@ export async function sendWhatsAppMessage(
     },
   });
 
-  const { phoneNumberId, to, message } = params;
+  // #region agent log
+  fetch('http://127.0.0.1:7243/ingest/bcc78ab0-226b-408e-9be5-e85475e37b10',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'whatsapp-sender.ts:45',message:'After console.log, before destructuring',data:{hasParams:!!params},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+  // #endregion
 
+  const { phoneNumberId, to, message } = params;
+  
+  // #region agent log
+  fetch('http://127.0.0.1:7243/ingest/bcc78ab0-226b-408e-9be5-e85475e37b10',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'whatsapp-sender.ts:50',message:'After destructuring',data:{phoneNumberId,to,hasMessage:!!message,messageLength:message?.length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+  // #endregion
+
+  // #region agent log
+  fetch('http://127.0.0.1:7243/ingest/bcc78ab0-226b-408e-9be5-e85475e37b10',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'whatsapp-sender.ts:54',message:'Before token validation',data:{hasProcessEnv:typeof process!=='undefined',hasEnv:typeof process?.env!=='undefined'},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+  // #endregion
+  
   // Validar token de acesso
   const accessToken = process.env.WHATSAPP_ACCESS_TOKEN;
+  
+  // #region agent log
+  fetch('http://127.0.0.1:7243/ingest/bcc78ab0-226b-408e-9be5-e85475e37b10',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'whatsapp-sender.ts:60',message:'After token check',data:{hasAccessToken:!!accessToken,tokenLength:accessToken?.length||0},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+  // #endregion
+  
   if (!accessToken) {
     console.error('[WHATSAPP_SENDER] WHATSAPP_ACCESS_TOKEN não está configurado');
+    // #region agent log
+    fetch('http://127.0.0.1:7243/ingest/bcc78ab0-226b-408e-9be5-e85475e37b10',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'whatsapp-sender.ts:66',message:'Token missing, returning error',data:{},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+    // #endregion
     return {
       success: false,
       error: 'WHATSAPP_ACCESS_TOKEN não está configurado',

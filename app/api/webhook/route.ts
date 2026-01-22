@@ -7,6 +7,10 @@ import { processWebhookPayload } from '@/lib/webhook-processor';
 import { getResponseConfig } from '@/lib/response-config';
 import { sendWhatsAppMessage } from '@/lib/whatsapp-sender';
 
+// #region agent log
+fetch('http://127.0.0.1:7243/ingest/bcc78ab0-226b-408e-9be5-e85475e37b10',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'webhook/route.ts:9',message:'Import sendWhatsAppMessage check',data:{hasSendWhatsAppMessage:typeof sendWhatsAppMessage,isFunction:typeof sendWhatsAppMessage==='function'},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+// #endregion
+
 /**
  * GET - Verificação do webhook pela Meta
  * A Meta envia um GET request para verificar o webhook durante a configuração
@@ -161,11 +165,31 @@ async function processAutomaticResponses(
 
         console.log('[AUTO_RESPONSE] 📞 Chamando sendWhatsAppMessage agora...');
         
-        const result = await sendWhatsAppMessage({
-          phoneNumberId: phoneNumberId,
-          to: event.from_number,
-          message: responseConfig.default_message,
-        });
+        // #region agent log
+        fetch('http://127.0.0.1:7243/ingest/bcc78ab0-226b-408e-9be5-e85475e37b10',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'webhook/route.ts:164',message:'Before await sendWhatsAppMessage',data:{phoneNumberId,to:event.from_number,hasMessage:!!responseConfig.default_message,messageLength:responseConfig.default_message?.length,hasFunction:typeof sendWhatsAppMessage==='function'},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
+        // #endregion
+        
+        let result;
+        try {
+          // #region agent log
+          fetch('http://127.0.0.1:7243/ingest/bcc78ab0-226b-408e-9be5-e85475e37b10',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'webhook/route.ts:172',message:'About to call sendWhatsAppMessage',data:{phoneNumberId,to:event.from_number},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+          // #endregion
+          
+          result = await sendWhatsAppMessage({
+            phoneNumberId: phoneNumberId,
+            to: event.from_number,
+            message: responseConfig.default_message,
+          });
+          
+          // #region agent log
+          fetch('http://127.0.0.1:7243/ingest/bcc78ab0-226b-408e-9be5-e85475e37b10',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'webhook/route.ts:181',message:'After await sendWhatsAppMessage',data:{hasResult:!!result,resultSuccess:result?.success,resultError:result?.error},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
+          // #endregion
+        } catch (awaitError) {
+          // #region agent log
+          fetch('http://127.0.0.1:7243/ingest/bcc78ab0-226b-408e-9be5-e85475e37b10',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'webhook/route.ts:186',message:'Error in await sendWhatsAppMessage',data:{errorMessage:awaitError instanceof Error?awaitError.message:String(awaitError),errorType:awaitError instanceof Error?awaitError.constructor.name:typeof awaitError},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
+          // #endregion
+          throw awaitError;
+        }
 
         console.log('[AUTO_RESPONSE] ✅ sendWhatsAppMessage retornou:', {
           hasResult: !!result,
