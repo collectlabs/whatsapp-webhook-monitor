@@ -73,6 +73,12 @@ async function processAutomaticResponses(
   eventsData: Array<{ message_id: string; from_number: string; to_number: string; message_type: string; message_body: string | null }>
 ): Promise<void> {
   try {
+    console.log('[AUTO_RESPONSE] Iniciando processamento de respostas automáticas', {
+      totalEvents: eventsData.length,
+      hasPayload: !!payload,
+      payloadEntries: payload.entry?.length || 0,
+    });
+
     // Buscar configuração de resposta automática
     const responseConfig = await getResponseConfig();
     
@@ -88,6 +94,19 @@ async function processAutomaticResponses(
       return;
     }
 
+    // Log detalhado de todos os eventos recebidos para debug
+    console.log('[AUTO_RESPONSE] Eventos recebidos para análise:', {
+      totalEvents: eventsData.length,
+      events: eventsData.map((event) => ({
+        message_type: event.message_type,
+        from_number: event.from_number,
+        message_body: event.message_body,
+        isText: event.message_type === 'text',
+        isInteractive: event.message_type === 'interactive',
+        hasButtonText: event.message_body?.includes('Botão clicado'),
+      })),
+    });
+
     // Filtrar apenas mensagens de clientes (text ou interactive com button_reply)
     // Não enviar resposta para status updates (delivered, read, sent, etc.)
     const clientMessages = eventsData.filter((event) => {
@@ -98,11 +117,24 @@ async function processAutomaticResponses(
       // Excluir status updates
       const isStatusUpdate = ['sent', 'delivered', 'read', 'failed'].includes(event.message_type);
       
-      return isClientMessage && !isStatusUpdate;
+      const shouldProcess = isClientMessage && !isStatusUpdate;
+      
+      console.log('[AUTO_RESPONSE] Analisando evento:', {
+        message_type: event.message_type,
+        from_number: event.from_number,
+        isClientMessage,
+        isStatusUpdate,
+        shouldProcess,
+      });
+      
+      return shouldProcess;
     });
 
     if (clientMessages.length === 0) {
-      console.log('[AUTO_RESPONSE] Nenhuma mensagem de cliente encontrada para resposta automática');
+      console.log('[AUTO_RESPONSE] Nenhuma mensagem de cliente encontrada para resposta automática', {
+        totalEvents: eventsData.length,
+        eventTypes: eventsData.map(e => e.message_type),
+      });
       return;
     }
 
