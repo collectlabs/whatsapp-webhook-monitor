@@ -16,50 +16,112 @@ export interface ResponseConfig {
 /**
  * Busca a configuração de resposta automática ativa
  * Retorna a primeira configuração encontrada com enabled = true
+ * Inclui retry logic para lidar com erros de conexão temporários
  * @returns Configuração ativa ou null se não houver configuração habilitada
  */
-export async function getResponseConfig(): Promise<ResponseConfig | null> {
-  try {
-    const supabase = getSupabaseClient();
+export async function getResponseConfig(maxRetries: number = 2): Promise<ResponseConfig | null> {
+  let lastError: any = null;
 
-    const { data, error } = await supabase
-      .from('response_config')
-      .select('*')
-      .eq('enabled', true)
-      .limit(1)
-      .single();
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      const supabase = getSupabaseClient();
 
-    if (error) {
-      // Se não encontrar nenhum registro, não é um erro crítico
-      if (error.code === 'PGRST116') {
-        console.log('[RESPONSE_CONFIG] Nenhuma configuração de resposta automática encontrada ou desabilitada');
+      // Buscar configuração
+      const { data, error } = await supabase
+        .from('response_config')
+        .select('*')
+        .eq('enabled', true)
+        .limit(1)
+        .single();
+
+      if (error) {
+        // Se não encontrar nenhum registro, não é um erro crítico
+        if (error.code === 'PGRST116') {
+          console.log('[RESPONSE_CONFIG] Nenhuma configuração de resposta automática encontrada ou desabilitada');
+          return null;
+        }
+
+        // Se for erro de conexão e ainda tiver tentativas, tentar novamente
+        if (
+          (error.message?.includes('fetch failed') ||
+            error.message?.includes('SocketError') ||
+            error.message?.includes('UND_ERR_SOCKET') ||
+            error.message?.includes('ECONNRESET') ||
+            error.message?.includes('ETIMEDOUT')) &&
+          attempt < maxRetries
+        ) {
+          const delay = (attempt + 1) * 1000; // Backoff exponencial simples
+          console.warn(`[RESPONSE_CONFIG] Erro de conexão (tentativa ${attempt + 1}/${maxRetries + 1}), tentando novamente em ${delay}ms...`, {
+            error: error.message,
+          });
+          await new Promise((resolve) => setTimeout(resolve, delay));
+          lastError = error;
+          continue;
+        }
+
+        console.error('[RESPONSE_CONFIG] Erro ao buscar configuração:', {
+          code: error.code,
+          message: error.message,
+          details: error.details,
+        });
         return null;
       }
 
-      console.error('[RESPONSE_CONFIG] Erro ao buscar configuração:', error);
-      return null;
+      if (!data) {
+        console.log('[RESPONSE_CONFIG] Nenhuma configuração de resposta automática encontrada');
+        return null;
+      }
+
+      // Validar se a mensagem padrão está configurada
+      if (!data.default_message || data.default_message.trim() === '') {
+        console.warn('[RESPONSE_CONFIG] Configuração encontrada mas default_message está vazia');
+        return null;
+      }
+
+      console.log('[RESPONSE_CONFIG] Configuração de resposta automática encontrada:', {
+        id: data.id,
+        enabled: data.enabled,
+        messageLength: data.default_message.length,
+      });
+
+      return data as ResponseConfig;
+    } catch (error: any) {
+      lastError = error;
+
+      // Se for erro de conexão e ainda tiver tentativas, tentar novamente
+      if (
+        (error?.message?.includes('fetch failed') ||
+          error?.message?.includes('SocketError') ||
+          error?.message?.includes('UND_ERR_SOCKET') ||
+          error?.message?.includes('ECONNRESET') ||
+          error?.message?.includes('ETIMEDOUT') ||
+          error?.message?.includes('Timeout')) &&
+        attempt < maxRetries
+      ) {
+        const delay = (attempt + 1) * 1000;
+        console.warn(`[RESPONSE_CONFIG] Erro de conexão (tentativa ${attempt + 1}/${maxRetries + 1}), tentando novamente em ${delay}ms...`, {
+          error: error?.message || 'Erro desconhecido',
+        });
+        await new Promise((resolve) => setTimeout(resolve, delay));
+        continue;
+      }
+
+      // Se não for erro de conexão ou esgotaram as tentativas, logar e retornar null
+      if (attempt === maxRetries) {
+        console.error('[RESPONSE_CONFIG] Erro inesperado ao buscar configuração após todas as tentativas:', {
+          error: error?.message || 'Erro desconhecido',
+          stack: error?.stack,
+        });
+      }
     }
-
-    if (!data) {
-      console.log('[RESPONSE_CONFIG] Nenhuma configuração de resposta automática encontrada');
-      return null;
-    }
-
-    // Validar se a mensagem padrão está configurada
-    if (!data.default_message || data.default_message.trim() === '') {
-      console.warn('[RESPONSE_CONFIG] Configuração encontrada mas default_message está vazia');
-      return null;
-    }
-
-    console.log('[RESPONSE_CONFIG] Configuração de resposta automática encontrada:', {
-      id: data.id,
-      enabled: data.enabled,
-      messageLength: data.default_message.length,
-    });
-
-    return data as ResponseConfig;
-  } catch (error) {
-    console.error('[RESPONSE_CONFIG] Erro inesperado ao buscar configuração:', error);
-    return null;
   }
+
+  // Se chegou aqui, todas as tentativas falharam
+  if (lastError) {
+    console.error('[RESPONSE_CONFIG] Falha ao buscar configuração após todas as tentativas:', {
+      error: lastError?.message || 'Erro desconhecido',
+    });
+  }
+
+  return null;
 }
