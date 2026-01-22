@@ -13,6 +13,10 @@ export interface ResponseConfig {
   updated_at: string;
 }
 
+// Cache simples para evitar múltiplas queries simultâneas
+let configCache: { config: ResponseConfig | null; timestamp: number } | null = null;
+const CACHE_TTL = 30000; // 30 segundos
+
 /**
  * Busca a configuração de resposta automática ativa
  * Retorna a primeira configuração encontrada com enabled = true
@@ -23,6 +27,26 @@ export async function getResponseConfig(maxRetries: number = 2): Promise<Respons
   // #region agent log
   console.log('[DEBUG_GET_CONFIG_ENTRY] getResponseConfig chamada:', {
     maxRetries,
+    hasCache: !!configCache,
+    cacheAge: configCache ? Date.now() - configCache.timestamp : null,
+    timestamp: new Date().toISOString(),
+  });
+  // #endregion
+  
+  // Verificar cache primeiro
+  if (configCache && (Date.now() - configCache.timestamp) < CACHE_TTL) {
+    // #region agent log
+    console.log('[DEBUG_GET_CONFIG_CACHE_HIT] Usando cache:', {
+      hasConfig: !!configCache.config,
+      cacheAge: Date.now() - configCache.timestamp,
+      timestamp: new Date().toISOString(),
+    });
+    // #endregion
+    return configCache.config;
+  }
+  
+  // #region agent log
+  console.log('[DEBUG_GET_CONFIG_CACHE_MISS] Cache não disponível, buscando do banco:', {
     timestamp: new Date().toISOString(),
   });
   // #endregion
@@ -78,33 +102,55 @@ export async function getResponseConfig(maxRetries: number = 2): Promise<Respons
       });
       // #endregion
       
-      // Adicionar timeout manual de 5 segundos
+      // Adicionar timeout manual de 3 segundos (reduzido para ser mais rápido)
+      let timeoutId: NodeJS.Timeout | null = null;
       const timeoutPromise = new Promise<{ data: null; error: { code: string; message: string } }>((resolve) => {
-        setTimeout(() => {
-          console.error('[DEBUG_GET_CONFIG_TIMEOUT] Query timeout após 5 segundos');
+        timeoutId = setTimeout(() => {
+          // #region agent log
+          console.error('[DEBUG_GET_CONFIG_TIMEOUT] Query timeout após 3 segundos');
+          // #endregion
           resolve({
             data: null,
             error: {
               code: 'TIMEOUT',
-              message: 'Query timeout após 5 segundos',
+              message: 'Query timeout após 3 segundos',
             },
           });
-        }, 5000);
+        }, 3000);
       });
       
       let queryResult;
       try {
         // #region agent log
-        console.log('[DEBUG_GET_CONFIG_AWAITING] Aguardando resultado da query (com timeout):', {
+        console.log('[DEBUG_GET_CONFIG_AWAITING] Aguardando resultado da query (com timeout de 3s):', {
           timestamp: new Date().toISOString(),
         });
         // #endregion
         
         // Usar Promise.race para adicionar timeout
-        queryResult = await Promise.race([
-          query,
-          timeoutPromise,
-        ]) as { data: ResponseConfig | null; error: any };
+        const raceResult = await Promise.race([
+          query.then((result) => {
+            // #region agent log
+            console.log('[DEBUG_GET_CONFIG_QUERY_RESOLVED] Query resolveu antes do timeout:', {
+              hasData: !!result.data,
+              hasError: !!result.error,
+              timestamp: new Date().toISOString(),
+            });
+            // #endregion
+            if (timeoutId) clearTimeout(timeoutId);
+            return result;
+          }),
+          timeoutPromise.then((result) => {
+            // #region agent log
+            console.log('[DEBUG_GET_CONFIG_TIMEOUT_RESOLVED] Timeout resolveu:', {
+              timestamp: new Date().toISOString(),
+            });
+            // #endregion
+            return result;
+          }),
+        ]);
+        
+        queryResult = raceResult as { data: ResponseConfig | null; error: any };
         
         // #region agent log
         console.log('[DEBUG_GET_CONFIG_AWAIT_COMPLETE] Await completado:', {
@@ -123,12 +169,25 @@ export async function getResponseConfig(maxRetries: number = 2): Promise<Respons
           timestamp: new Date().toISOString(),
         });
         // #endregion
+        if (timeoutId) clearTimeout(timeoutId);
         throw queryError;
+      } finally {
+        // Garantir que o timeout seja limpo
+        if (timeoutId) clearTimeout(timeoutId);
       }
       
       // Verificar se foi timeout
       if (queryResult?.error?.code === 'TIMEOUT') {
-        console.error('[RESPONSE_CONFIG] Timeout ao buscar configuração após 5 segundos');
+        console.error('[RESPONSE_CONFIG] Timeout ao buscar configuração após 3 segundos');
+        // Usar cache se disponível mesmo com timeout
+        if (configCache) {
+          // #region agent log
+          console.log('[DEBUG_GET_CONFIG_TIMEOUT_CACHE] Usando cache devido a timeout:', {
+            timestamp: new Date().toISOString(),
+          });
+          // #endregion
+          return configCache.config;
+        }
         return null;
       }
       
@@ -149,6 +208,11 @@ export async function getResponseConfig(maxRetries: number = 2): Promise<Respons
         // Se não encontrar nenhum registro, não é um erro crítico
         if (error.code === 'PGRST116') {
           console.log('[RESPONSE_CONFIG] Nenhuma configuração de resposta automática encontrada ou desabilitada');
+          // Atualizar cache com null
+          configCache = {
+            config: null,
+            timestamp: Date.now(),
+          };
           return null;
         }
 
@@ -195,7 +259,21 @@ export async function getResponseConfig(maxRetries: number = 2): Promise<Respons
         messageLength: data.default_message.length,
       });
 
-      return data as ResponseConfig;
+      const config = data as ResponseConfig;
+      
+      // Atualizar cache
+      configCache = {
+        config,
+        timestamp: Date.now(),
+      };
+      
+      // #region agent log
+      console.log('[DEBUG_GET_CONFIG_CACHE_UPDATED] Cache atualizado:', {
+        timestamp: new Date().toISOString(),
+      });
+      // #endregion
+
+      return config;
     } catch (error: any) {
       lastError = error;
 
@@ -232,6 +310,11 @@ export async function getResponseConfig(maxRetries: number = 2): Promise<Respons
     console.error('[RESPONSE_CONFIG] Falha ao buscar configuração após todas as tentativas:', {
       error: lastError?.message || 'Erro desconhecido',
     });
+    // Atualizar cache com null para evitar tentativas repetidas
+    configCache = {
+      config: null,
+      timestamp: Date.now(),
+    };
   }
 
   return null;
