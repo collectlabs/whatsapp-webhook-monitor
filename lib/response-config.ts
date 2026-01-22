@@ -61,12 +61,48 @@ export async function getResponseConfig(maxRetries: number = 2): Promise<Respons
       });
       // #endregion
       
-      const queryResult = await supabase
+      // Criar a query primeiro
+      const query = supabase
         .from('response_config')
         .select('*')
         .eq('enabled', true)
         .limit(1)
         .single();
+      
+      // #region agent log
+      console.log('[DEBUG_GET_CONFIG_QUERY_CREATED] Query criada, aguardando resultado:', {
+        hasQuery: !!query,
+        isPromise: query instanceof Promise,
+        timestamp: new Date().toISOString(),
+      });
+      // #endregion
+      
+      let queryResult;
+      try {
+        // #region agent log
+        console.log('[DEBUG_GET_CONFIG_AWAITING] Aguardando resultado da query:', {
+          timestamp: new Date().toISOString(),
+        });
+        // #endregion
+        
+        queryResult = await query;
+        
+        // #region agent log
+        console.log('[DEBUG_GET_CONFIG_AWAIT_COMPLETE] Await completado:', {
+          hasResult: !!queryResult,
+          timestamp: new Date().toISOString(),
+        });
+        // #endregion
+      } catch (queryError) {
+        // #region agent log
+        console.error('[DEBUG_GET_CONFIG_QUERY_ERROR] Erro ao executar query:', {
+          error: queryError instanceof Error ? queryError.message : String(queryError),
+          stack: queryError instanceof Error ? queryError.stack : undefined,
+          timestamp: new Date().toISOString(),
+        });
+        // #endregion
+        throw queryError;
+      }
       
       const { data, error } = queryResult;
       
@@ -76,6 +112,7 @@ export async function getResponseConfig(maxRetries: number = 2): Promise<Respons
         hasError: !!error,
         errorCode: error?.code,
         errorMessage: error?.message,
+        dataKeys: data ? Object.keys(data) : [],
         timestamp: new Date().toISOString(),
       });
       // #endregion
