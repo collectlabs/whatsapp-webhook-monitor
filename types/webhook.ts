@@ -48,6 +48,7 @@ export interface Interactive {
   type: 'button_reply' | 'cta_url' | 'list_reply';
   button_reply?: ButtonReply;
   cta_reply?: CtaUrlReply;
+  cta_url_reply?: CtaUrlReply; // Nome alternativo usado pela API
   list_reply?: {
     id: string;
     title: string;
