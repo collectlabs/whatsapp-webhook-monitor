@@ -28,6 +28,20 @@ export function extractMessageData(
     if (message.location.name) {
       messageBody += ` - ${message.location.name}`;
     }
+  } else if (message.type === 'interactive' && message.interactive) {
+    // Processar mensagens interativas (cliques em botões)
+    const interactive = message.interactive;
+    
+    if (interactive.type === 'button_reply' && interactive.button_reply) {
+      // Botão de resposta rápida clicado
+      messageBody = `Botão clicado: "${interactive.button_reply.title}" (ID: ${interactive.button_reply.id})`;
+    } else if (interactive.type === 'cta_url' && interactive.cta_reply) {
+      // Botão CTA URL clicado
+      messageBody = `CTA URL clicado: "${interactive.cta_reply.title}" (Payload: ${interactive.cta_reply.payload})`;
+    } else if (interactive.type === 'list_reply' && interactive.list_reply) {
+      // Item de lista selecionado
+      messageBody = `Item selecionado: "${interactive.list_reply.title}" (ID: ${interactive.list_reply.id})`;
+    }
   }
 
   return {

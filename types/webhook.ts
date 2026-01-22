@@ -33,6 +33,28 @@ export interface WhatsAppContact {
   wa_id: string;
 }
 
+// Tipos para mensagens interativas
+export interface ButtonReply {
+  id: string;
+  title: string;
+}
+
+export interface CtaUrlReply {
+  title: string;
+  payload: string;
+}
+
+export interface Interactive {
+  type: 'button_reply' | 'cta_url' | 'list_reply';
+  button_reply?: ButtonReply;
+  cta_reply?: CtaUrlReply;
+  list_reply?: {
+    id: string;
+    title: string;
+    description?: string;
+  };
+}
+
 export interface WhatsAppMessage {
   from: string;
   id: string;
@@ -72,6 +94,7 @@ export interface WhatsAppMessage {
     name?: string;
     address?: string;
   };
+  interactive?: Interactive;
   contacts?: any[];
   [key: string]: any; // Para outros tipos de mensagem
 }
