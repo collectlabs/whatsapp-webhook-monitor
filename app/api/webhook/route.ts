@@ -170,13 +170,15 @@ async function processAutomaticResponses(
         console.log('[AUTO_RESPONSE] ✅ sendWhatsAppMessage retornou:', {
           hasResult: !!result,
           resultType: typeof result,
+          resultKeys: result ? Object.keys(result) : [],
         });
 
-        console.log('[AUTO_RESPONSE] Resultado do envio:', {
-          success: result.success,
-          messageId: result.messageId,
-          error: result.error,
+        console.log('[AUTO_RESPONSE] 📊 Resultado detalhado do envio:', {
+          success: result?.success,
+          messageId: result?.messageId,
+          error: result?.error,
           to: event.from_number,
+          fullResult: JSON.stringify(result),
         });
 
         if (result.success) {
@@ -192,9 +194,12 @@ async function processAutomaticResponses(
           });
         }
       } catch (error) {
-        console.error('[AUTO_RESPONSE] Erro inesperado ao enviar resposta automática:', {
+        console.error('[AUTO_RESPONSE] ❌ Erro inesperado ao enviar resposta automática:', {
           to: event.from_number,
           error: error instanceof Error ? error.message : 'Erro desconhecido',
+          errorType: error instanceof Error ? error.constructor.name : typeof error,
+          stack: error instanceof Error ? error.stack : undefined,
+          fullError: JSON.stringify(error, Object.getOwnPropertyNames(error)),
         });
       }
     });
