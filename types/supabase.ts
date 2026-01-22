@@ -45,6 +45,33 @@ export type Database = {
         }
         Relationships: []
       }
+      response_config: {
+        Row: {
+          id: string
+          default_message: string
+          time_window_hours: number
+          enabled: boolean
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          default_message: string
+          time_window_hours?: number
+          enabled?: boolean
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          default_message?: string
+          time_window_hours?: number
+          enabled?: boolean
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never

@@ -4,6 +4,8 @@ import {
   WhatsAppWebhookPayload,
 } from '@/types/webhook';
 import { processWebhookPayload } from '@/lib/webhook-processor';
+import { getResponseConfig } from '@/lib/response-config';
+import { sendWhatsAppMessage } from '@/lib/whatsapp-sender';
 
 /**
  * GET - Verificação do webhook pela Meta
@@ -60,6 +62,94 @@ export async function GET(request: NextRequest) {
     verifyTokenLength: normalizedVerifyToken.length,
   });
   return new NextResponse('Forbidden', { status: 403 });
+}
+
+/**
+ * Processa respostas automáticas para mensagens de clientes
+ * Envia resposta automática para mensagens de texto ou quick reply (button_reply)
+ */
+async function processAutomaticResponses(
+  payload: WhatsAppWebhookPayload,
+  eventsData: Array<{ message_id: string; from_number: string; to_number: string; message_type: string; message_body: string | null }>
+): Promise<void> {
+  try {
+    // Buscar configuração de resposta automática
+    const responseConfig = await getResponseConfig();
+    
+    if (!responseConfig) {
+      console.log('[AUTO_RESPONSE] Resposta automática desabilitada ou não configurada');
+      return;
+    }
+
+    // Extrair phone_number_id do payload
+    const phoneNumberId = payload.entry[0]?.changes[0]?.value?.metadata?.phone_number_id;
+    if (!phoneNumberId) {
+      console.warn('[AUTO_RESPONSE] phone_number_id não encontrado no payload');
+      return;
+    }
+
+    // Filtrar apenas mensagens de clientes (text ou interactive com button_reply)
+    // Não enviar resposta para status updates (delivered, read, sent, etc.)
+    const clientMessages = eventsData.filter((event) => {
+      const isClientMessage = 
+        event.message_type === 'text' || 
+        (event.message_type === 'interactive' && event.message_body?.includes('Botão clicado'));
+      
+      // Excluir status updates
+      const isStatusUpdate = ['sent', 'delivered', 'read', 'failed'].includes(event.message_type);
+      
+      return isClientMessage && !isStatusUpdate;
+    });
+
+    if (clientMessages.length === 0) {
+      console.log('[AUTO_RESPONSE] Nenhuma mensagem de cliente encontrada para resposta automática');
+      return;
+    }
+
+    console.log(`[AUTO_RESPONSE] Processando ${clientMessages.length} mensagem(ns) de cliente(s) para resposta automática`);
+
+    // Enviar resposta automática para cada mensagem de cliente
+    // Usar Promise.allSettled para não bloquear se uma falhar
+    const responsePromises = clientMessages.map(async (event) => {
+      try {
+        console.log('[AUTO_RESPONSE] Enviando resposta automática para:', {
+          from: event.from_number,
+          messageType: event.message_type,
+        });
+
+        const result = await sendWhatsAppMessage({
+          phoneNumberId: phoneNumberId,
+          to: event.from_number,
+          message: responseConfig.default_message,
+        });
+
+        if (result.success) {
+          console.log('[AUTO_RESPONSE] Resposta automática enviada com sucesso:', {
+            to: event.from_number,
+            messageId: result.messageId,
+          });
+        } else {
+          console.error('[AUTO_RESPONSE] Erro ao enviar resposta automática:', {
+            to: event.from_number,
+            error: result.error,
+          });
+        }
+      } catch (error) {
+        console.error('[AUTO_RESPONSE] Erro inesperado ao enviar resposta automática:', {
+          to: event.from_number,
+          error: error instanceof Error ? error.message : 'Erro desconhecido',
+        });
+      }
+    });
+
+    // Aguardar todas as respostas serem processadas (mas não bloquear o webhook)
+    await Promise.allSettled(responsePromises);
+    
+    console.log('[AUTO_RESPONSE] Processamento de respostas automáticas concluído');
+  } catch (error) {
+    console.error('[AUTO_RESPONSE] Erro ao processar respostas automáticas:', error);
+    // Não propagar o erro para não afetar o webhook
+  }
 }
 
 /**
@@ -230,6 +320,13 @@ export async function POST(request: NextRequest) {
     console.log(
       `Webhook processado: ${successCount}/${allEventsData.length} eventos salvos${failedCount > 0 ? `, ${failedCount} falharam` : ''}`
     );
+
+    // Processar respostas automáticas para mensagens de clientes
+    // Fazer de forma assíncrona para não bloquear a resposta do webhook
+    processAutomaticResponses(body, allEventsData).catch((error) => {
+      console.error('[AUTO_RESPONSE] Erro ao processar respostas automáticas:', error);
+      // Não propagar o erro para não afetar o webhook
+    });
 
     // Sempre retornar 200 OK para a Meta, mesmo se houver erros
     // A Meta pode reenviar se retornarmos erro

@@ -6,6 +6,21 @@ import {
 } from '@/types/webhook';
 
 /**
+ * Cria um identificador único para cada evento
+ * Combina message_id + message_type + timestamp para garantir unicidade
+ * Isso permite que o mesmo message_id tenha múltiplos eventos (send, delivered, read)
+ */
+function createUniqueEventId(
+  messageId: string,
+  messageType: string,
+  timestamp: number
+): string {
+  // Criar um identificador único combinando os três valores
+  // Isso garante que cada evento (send, delivered, read) tenha um ID único
+  return `${messageId}_${messageType}_${timestamp}`;
+}
+
+/**
  * Extrai dados estruturados de uma mensagem do webhook
  */
 export function extractMessageData(
@@ -81,11 +96,14 @@ export function extractMessageData(
     }
   }
 
+  const timestamp = parseInt(message.timestamp);
+  const uniqueId = createUniqueEventId(message.id, message.type, timestamp);
+  
   return {
-    message_id: message.id,
+    message_id: uniqueId,
     from_number: message.from,
     to_number: phoneNumberId,
-    timestamp: parseInt(message.timestamp),
+    timestamp: timestamp,
     message_type: message.type,
     message_body: messageBody,
     raw_payload: rawPayload,
@@ -100,11 +118,14 @@ export function extractStatusData(
   phoneNumberId: string,
   rawPayload: WhatsAppWebhookPayload
 ): WhatsAppMessageData {
+  const timestamp = parseInt(status.timestamp);
+  const uniqueId = createUniqueEventId(status.id, status.status, timestamp);
+  
   return {
-    message_id: status.id,
+    message_id: uniqueId,
     from_number: status.recipient_id,
     to_number: phoneNumberId,
-    timestamp: parseInt(status.timestamp),
+    timestamp: timestamp,
     message_type: status.status,
     message_body: null,
     raw_payload: rawPayload,
@@ -174,11 +195,15 @@ export function processWebhookPayload(
         if (Array.isArray(fieldValue)) {
           for (let i = 0; i < fieldValue.length; i++) {
             const item = fieldValue[i];
+            const timestamp = item?.timestamp ? parseInt(item.timestamp) : Math.floor(Date.now() / 1000);
+            const baseId = item?.id || `unknown_${field}_${i}_${Date.now()}`;
+            const uniqueId = createUniqueEventId(baseId, field, timestamp);
+            
             const genericEvent: WhatsAppMessageData = {
-              message_id: item?.id || `unknown_${field}_${i}_${Date.now()}`,
+              message_id: uniqueId,
               from_number: item?.from || item?.recipient_id || item?.wa_id || 'unknown',
               to_number: phoneNumberId,
-              timestamp: item?.timestamp ? parseInt(item.timestamp) : Math.floor(Date.now() / 1000),
+              timestamp: timestamp,
               message_type: field,
               message_body: null,
               raw_payload: payload,
@@ -187,11 +212,15 @@ export function processWebhookPayload(
           }
         } else if (fieldValue && typeof fieldValue === 'object') {
           // Se for um objeto único, criar um evento
+          const timestamp = fieldValue?.timestamp ? parseInt(fieldValue.timestamp) : Math.floor(Date.now() / 1000);
+          const baseId = fieldValue?.id || `unknown_${field}_${Date.now()}`;
+          const uniqueId = createUniqueEventId(baseId, field, timestamp);
+          
           const genericEvent: WhatsAppMessageData = {
-            message_id: fieldValue?.id || `unknown_${field}_${Date.now()}`,
+            message_id: uniqueId,
             from_number: fieldValue?.from || fieldValue?.recipient_id || fieldValue?.wa_id || 'unknown',
             to_number: phoneNumberId,
-            timestamp: fieldValue?.timestamp ? parseInt(fieldValue.timestamp) : Math.floor(Date.now() / 1000),
+            timestamp: timestamp,
             message_type: field,
             message_body: null,
             raw_payload: payload,
