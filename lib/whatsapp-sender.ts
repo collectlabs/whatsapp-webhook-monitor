@@ -35,25 +35,16 @@ export async function sendWhatsAppMessage(
 ): Promise<{ success: boolean; messageId?: string; error?: string }> {
   const { to, message } = params;
 
-  // Validar token de acesso
-  const accessToken = process.env.WHATSAPP_ACCESS_TOKEN;
-  if (!accessToken) {
-    console.error('[WHATSAPP_SENDER] WHATSAPP_ACCESS_TOKEN não está configurado');
-    return {
-      success: false,
-      error: 'WHATSAPP_ACCESS_TOKEN não está configurado',
-    };
-  }
-
-  // Validar phone number ID
-  const phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID;
-  if (!phoneNumberId) {
-    console.error('[WHATSAPP_SENDER] WHATSAPP_PHONE_NUMBER_ID não está configurado');
-    return {
-      success: false,
-      error: 'WHATSAPP_PHONE_NUMBER_ID não está configurado',
-    };
-  }
+  // TESTE HARDCODED - REMOVER APÓS TESTE
+  const accessToken = process.env.WHATSAPP_ACCESS_TOKEN || 'EAAh53VyXftIBQnEZBP3j1lBfoGEXwcZAjqK6qQfp7scL4GCt5M1rMbbg9cc7WSlfERh5smsjd3yl8muquQZAbYUtFaDx0JZClfB98sLKGz124SUfToWYWIZB8ViGMU8EI7s9vvp0FXiPL1l5Aj6V8BS0MCZBsiixf2RP6nZCzmanKFif8xueXJ01jnZAgMZCtHgZDZD';
+  const phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID || '823349844204985';
+  
+  console.log('[WHATSAPP_SENDER] Usando credenciais:', {
+    hasEnvToken: !!process.env.WHATSAPP_ACCESS_TOKEN,
+    hasEnvPhoneId: !!process.env.WHATSAPP_PHONE_NUMBER_ID,
+    tokenPreview: accessToken ? `${accessToken.substring(0, 15)}...` : 'undefined',
+    phoneNumberId,
+  });
 
   // Validar parâmetros
   if (!to || !message) {
