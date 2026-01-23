@@ -163,10 +163,10 @@ export async function POST(request: NextRequest) {
       return new NextResponse('OK', { status: 200 });
     }
 
-    // PRIMEIRO: Disparar respostas automáticas para mensagens de texto/button
+    // PRIMEIRO: Disparar respostas automáticas para mensagens de texto/button/audio
     // Isso é feito ANTES de salvar no banco para garantir que sempre responda
     for (const eventData of allEventsData) {
-      if (eventData.message_type === 'text' || eventData.message_type === 'button') {
+      if (eventData.message_type === 'text' || eventData.message_type === 'button' || eventData.message_type === 'audio') {
         console.log('[WEBHOOK] *** DISPARANDO RESPOSTA AUTOMÁTICA ***', {
           message_type: eventData.message_type,
           from_number: eventData.from_number,

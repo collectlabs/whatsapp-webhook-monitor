@@ -6,8 +6,8 @@ import { WhatsAppMessageData } from '@/types/webhook';
 import { getResponseConfig } from './response-config';
 import { sendWhatsAppMessage } from './whatsapp-sender';
 
-// APENAS estes tipos disparam resposta automática (mais restritivo)
-const REPLY_MESSAGE_TYPES = ['text', 'button'];
+// APENAS estes tipos disparam resposta automática
+const REPLY_MESSAGE_TYPES = ['text', 'button', 'audio'];
 
 /**
  * Verifica se uma mensagem deve receber resposta automática
@@ -22,9 +22,9 @@ export function shouldSendAutoReply(messageData: WhatsAppMessageData): boolean {
     to_number,
   });
 
-  // APENAS text e button disparam resposta
+  // APENAS text, button e audio disparam resposta
   if (!REPLY_MESSAGE_TYPES.includes(message_type)) {
-    console.log('[AUTO_REPLY] Ignorando - tipo não é text/button:', message_type);
+    console.log('[AUTO_REPLY] Ignorando - tipo não é text/button/audio:', message_type);
     return false;
   }
 
