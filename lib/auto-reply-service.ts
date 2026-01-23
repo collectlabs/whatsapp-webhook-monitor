@@ -6,59 +6,42 @@ import { WhatsAppMessageData } from '@/types/webhook';
 import { getResponseConfig } from './response-config';
 import { sendWhatsAppMessage } from './whatsapp-sender';
 
-// Tipos de mensagem que devem receber resposta automática
-const REPLY_MESSAGE_TYPES = ['text', 'interactive', 'button', 'image', 'audio', 'video', 'document', 'location'];
-
-// Tipos que NÃO devem receber resposta (status de entrega)
-const STATUS_TYPES = ['sent', 'delivered', 'read', 'failed', 'deleted'];
+// APENAS estes tipos disparam resposta automática (mais restritivo)
+const REPLY_MESSAGE_TYPES = ['text', 'button'];
 
 /**
  * Verifica se uma mensagem deve receber resposta automática
+ * Apenas mensagens de TEXTO ou BUTTON do cliente disparam resposta
  */
 export function shouldSendAutoReply(messageData: WhatsAppMessageData): boolean {
   const { message_type, from_number, to_number } = messageData;
 
-  // Ignorar status de entrega
-  if (STATUS_TYPES.includes(message_type)) {
-    console.log('[AUTO_REPLY] Ignorando status de entrega:', message_type);
-    return false;
-  }
+  console.log('[AUTO_REPLY] Verificando mensagem:', {
+    message_type,
+    from_number,
+    to_number,
+  });
 
-  // Ignorar webhooks de raw/debug
-  if (message_type === 'raw_webhook') {
-    console.log('[AUTO_REPLY] Ignorando webhook raw');
-    return false;
-  }
-
-  // Verificar se é um tipo de mensagem válido para resposta
+  // APENAS text e button disparam resposta
   if (!REPLY_MESSAGE_TYPES.includes(message_type)) {
-    console.log('[AUTO_REPLY] Tipo de mensagem não requer resposta:', message_type);
+    console.log('[AUTO_REPLY] Ignorando - tipo não é text/button:', message_type);
     return false;
   }
 
-  // Verificar se from_number é diferente do número do business (evitar loop)
-  const businessPhoneId = process.env.WHATSAPP_PHONE_NUMBER_ID;
-  if (businessPhoneId && from_number === businessPhoneId) {
-    console.log('[AUTO_REPLY] Ignorando mensagem do próprio número do business');
-    return false;
-  }
-
-  // Verificar se to_number (phone_number_id) corresponde ao business
-  // Isso confirma que a mensagem foi enviada PARA o business (incoming)
-  if (businessPhoneId && to_number !== businessPhoneId) {
-    console.log('[AUTO_REPLY] Mensagem não é para o número do business:', {
-      to_number,
-      businessPhoneId,
-    });
-    return false;
-  }
-
-  // Validar que from_number parece ser um número de telefone
+  // Validar que from_number parece ser um número de telefone válido
   if (!from_number || from_number === 'unknown' || from_number.length < 10) {
-    console.log('[AUTO_REPLY] from_number inválido:', from_number);
+    console.log('[AUTO_REPLY] Ignorando - from_number inválido:', from_number);
     return false;
   }
 
+  // Verificar se to_number é o phone_number_id do business
+  const businessPhoneId = '823349844204985'; // Hardcoded para teste
+  if (to_number !== businessPhoneId) {
+    console.log('[AUTO_REPLY] Ignorando - não é para o business:', { to_number, businessPhoneId });
+    return false;
+  }
+
+  console.log('[AUTO_REPLY] Mensagem válida para resposta automática!');
   return true;
 }
 

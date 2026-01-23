@@ -204,10 +204,12 @@ export async function POST(request: NextRequest) {
         throw result.error;
       }
 
-      // Processar resposta automática em background (não bloquear)
-      // Verificar se é mensagem de texto ou interativa (button/quick reply)
-      const autoReplyTypes = ['text', 'interactive', 'button', 'image', 'audio', 'video', 'document', 'location'];
-      if (autoReplyTypes.includes(eventData.message_type)) {
+      // Processar resposta automática APENAS para text e button
+      if (eventData.message_type === 'text' || eventData.message_type === 'button') {
+        console.log('[WEBHOOK] Disparando resposta automática para:', {
+          message_type: eventData.message_type,
+          from_number: eventData.from_number,
+        });
         processAutoReply(eventData).catch((err) => {
           console.error('[AUTO_REPLY] Erro ao processar resposta automática:', {
             message_id: eventData.message_id,
