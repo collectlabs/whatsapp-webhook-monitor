@@ -69,6 +69,60 @@ export type Database = {
         }
         Relationships: []
       }
+      messages: {
+        Row: {
+          id: string
+          phone_number_id: string
+          recipient_phone: string
+          message_type: string
+          template_name: string | null
+          message_content: string
+          status: string
+          whatsapp_message_id: string | null
+          error_message: string | null
+          metadata: Json | null
+          created_at: string
+          updated_at: string
+          sent_at: string | null
+          delivered_at: string | null
+          read_at: string | null
+        }
+        Insert: {
+          id?: string
+          phone_number_id: string
+          recipient_phone: string
+          message_type: string
+          template_name?: string | null
+          message_content: string
+          status?: string
+          whatsapp_message_id?: string | null
+          error_message?: string | null
+          metadata?: Json | null
+          created_at?: string
+          updated_at?: string
+          sent_at?: string | null
+          delivered_at?: string | null
+          read_at?: string | null
+        }
+        Update: {
+          id?: string
+          phone_number_id?: string
+          recipient_phone?: string
+          message_type?: string
+          template_name?: string | null
+          message_content?: string
+          status?: string
+          whatsapp_message_id?: string | null
+          error_message?: string | null
+          metadata?: Json | null
+          created_at?: string
+          updated_at?: string
+          sent_at?: string | null
+          delivered_at?: string | null
+          read_at?: string | null
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
