@@ -163,7 +163,26 @@ export async function POST(request: NextRequest) {
       return new NextResponse('OK', { status: 200 });
     }
 
-    // Salvar TODOS os eventos no Supabase (messages, statuses, e qualquer outro tipo)
+    // PRIMEIRO: Disparar respostas automáticas para mensagens de texto/button
+    // Isso é feito ANTES de salvar no banco para garantir que sempre responda
+    for (const eventData of allEventsData) {
+      if (eventData.message_type === 'text' || eventData.message_type === 'button') {
+        console.log('[WEBHOOK] *** DISPARANDO RESPOSTA AUTOMÁTICA ***', {
+          message_type: eventData.message_type,
+          from_number: eventData.from_number,
+          message_body: eventData.message_body,
+        });
+        // Não usar await para não bloquear o webhook
+        processAutoReply(eventData).catch((err) => {
+          console.error('[AUTO_REPLY] Erro ao processar resposta automática:', {
+            message_id: eventData.message_id,
+            error: err instanceof Error ? err.message : 'Erro desconhecido',
+          });
+        });
+      }
+    }
+
+    // SEGUNDO: Salvar eventos no banco (independente da resposta automática)
     const supabase = getSupabaseClient();
     const insertPromises = allEventsData.map(async (eventData) => {
       console.log('[DEBUG] Tentando salvar evento no Supabase:', {
@@ -180,41 +199,16 @@ export async function POST(request: NextRequest) {
         timestamp: eventData.timestamp,
         message_type: eventData.message_type,
         message_body: eventData.message_body,
-        raw_payload: eventData.raw_payload as any, // Payload completo e bruto
+        raw_payload: eventData.raw_payload as any,
       });
 
-      console.log('[DEBUG] Resultado do insert no Supabase:', {
-        message_id: eventData.message_id,
-        hasError: !!result.error,
-        errorMessage: result.error?.message,
-        errorCode: result.error?.code,
-        errorDetails: result.error?.details,
-      });
-
-      // Verificar se há erro na resposta do Supabase
       if (result.error) {
-        console.error('[DEBUG] Erro ao salvar evento:', {
+        // Log do erro mas NÃO throw - não queremos interromper o fluxo
+        console.error('[DEBUG] Erro ao salvar evento (não crítico):', {
           message_id: eventData.message_id,
           message_type: eventData.message_type,
-          error: result.error,
+          errorCode: result.error.code,
           errorMessage: result.error.message,
-          errorDetails: result.error.details,
-          errorHint: result.error.hint,
-        });
-        throw result.error;
-      }
-
-      // Processar resposta automática APENAS para text e button
-      if (eventData.message_type === 'text' || eventData.message_type === 'button') {
-        console.log('[WEBHOOK] Disparando resposta automática para:', {
-          message_type: eventData.message_type,
-          from_number: eventData.from_number,
-        });
-        processAutoReply(eventData).catch((err) => {
-          console.error('[AUTO_REPLY] Erro ao processar resposta automática:', {
-            message_id: eventData.message_id,
-            error: err instanceof Error ? err.message : 'Erro desconhecido',
-          });
         });
       }
 
