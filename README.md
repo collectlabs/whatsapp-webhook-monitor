@@ -33,10 +33,37 @@ whatsapp-webhook-monitor/
 Crie um arquivo `.env.local` com as seguintes variáveis:
 
 ```env
+# Supabase
 SUPABASE_URL=your_supabase_project_url
 SUPABASE_SERVICE_ROLE_KEY=your_supabase_service_role_key
+
+# Webhook
 WEBHOOK_VERIFY_TOKEN=your_verify_token_here
+
+# WhatsApp Cloud API (para resposta automática)
+WHATSAPP_ACCESS_TOKEN=your_whatsapp_access_token
+WHATSAPP_PHONE_NUMBER_ID=your_phone_number_id
 ```
+
+### Configuração da Resposta Automática
+
+Para habilitar respostas automáticas, crie a tabela `response_config` no Supabase:
+
+```sql
+CREATE TABLE response_config (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  default_message TEXT NOT NULL,
+  enabled BOOLEAN DEFAULT true,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Inserir configuração padrão
+INSERT INTO response_config (default_message, enabled) 
+VALUES ('Olá! Agradecemos o seu retorno. Como podemos ajudar?', true);
+```
+
+A resposta automática será enviada para qualquer mensagem recebida do cliente (texto, imagem, áudio, vídeo, documento, localização ou clique em botão).
 
 ### Configuração do Webhook na Meta
 

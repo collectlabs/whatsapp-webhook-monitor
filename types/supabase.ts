@@ -9,6 +9,30 @@ export type Json =
 export type Database = {
   public: {
     Tables: {
+      response_config: {
+        Row: {
+          id: string
+          default_message: string
+          enabled: boolean
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          default_message: string
+          enabled?: boolean
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          default_message?: string
+          enabled?: boolean
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       whatsapp_messages: {
         Row: {
           created_at: string | null
@@ -42,33 +66,6 @@ export type Database = {
           raw_payload?: Json
           timestamp?: number
           to_number?: string
-        }
-        Relationships: []
-      }
-      response_config: {
-        Row: {
-          id: string
-          default_message: string
-          time_window_hours: number
-          enabled: boolean
-          created_at: string
-          updated_at: string
-        }
-        Insert: {
-          id?: string
-          default_message: string
-          time_window_hours?: number
-          enabled?: boolean
-          created_at?: string
-          updated_at?: string
-        }
-        Update: {
-          id?: string
-          default_message?: string
-          time_window_hours?: number
-          enabled?: boolean
-          created_at?: string
-          updated_at?: string
         }
         Relationships: []
       }

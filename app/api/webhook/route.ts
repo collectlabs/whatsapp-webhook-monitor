@@ -4,18 +4,7 @@ import {
   WhatsAppWebhookPayload,
 } from '@/types/webhook';
 import { processWebhookPayload } from '@/lib/webhook-processor';
-import { getResponseConfig } from '@/lib/response-config';
-import { sendWhatsAppMessage } from '@/lib/whatsapp-sender';
-
-// #region agent log
-console.log('[DEBUG_IMPORT] Verificando import de sendWhatsAppMessage:', {
-  hasSendWhatsAppMessage: typeof sendWhatsAppMessage !== 'undefined',
-  isFunction: typeof sendWhatsAppMessage === 'function',
-  type: typeof sendWhatsAppMessage,
-  value: typeof sendWhatsAppMessage !== 'undefined' ? 'defined' : 'undefined',
-  hypothesisId: 'A',
-});
-// #endregion
+import { processAutoReply } from '@/lib/auto-reply-service';
 
 /**
  * GET - Verificação do webhook pela Meta
@@ -72,279 +61,6 @@ export async function GET(request: NextRequest) {
     verifyTokenLength: normalizedVerifyToken.length,
   });
   return new NextResponse('Forbidden', { status: 403 });
-}
-
-/**
- * Processa respostas automáticas para mensagens de clientes
- * Envia resposta automática para mensagens de texto ou quick reply (button_reply)
- */
-async function processAutomaticResponses(
-  payload: WhatsAppWebhookPayload,
-  eventsData: Array<{ message_id: string; from_number: string; to_number: string; message_type: string; message_body: string | null }>
-): Promise<void> {
-  try {
-    console.log('[AUTO_RESPONSE] Iniciando processamento de respostas automáticas', {
-      totalEvents: eventsData.length,
-      hasPayload: !!payload,
-      payloadEntries: payload.entry?.length || 0,
-    });
-
-    // #region agent log
-    console.log('[DEBUG_BEFORE_GET_CONFIG] Antes de buscar getResponseConfig:', {
-      timestamp: new Date().toISOString(),
-    });
-    // #endregion
-
-    // Buscar configuração de resposta automática
-    let responseConfig;
-    try {
-      // #region agent log
-      console.log('[DEBUG_CALLING_GET_CONFIG] Chamando getResponseConfig agora:', {
-        timestamp: new Date().toISOString(),
-      });
-      // #endregion
-      
-      responseConfig = await getResponseConfig();
-      
-      // #region agent log
-      console.log('[DEBUG_AFTER_GET_CONFIG] Depois de getResponseConfig:', {
-        hasResponseConfig: !!responseConfig,
-        responseConfigId: responseConfig?.id,
-        enabled: responseConfig?.enabled,
-        hasMessage: !!responseConfig?.default_message,
-        timestamp: new Date().toISOString(),
-      });
-      // #endregion
-    } catch (configError) {
-      // #region agent log
-      console.error('[DEBUG_GET_CONFIG_ERROR] Erro ao buscar getResponseConfig:', {
-        error: configError instanceof Error ? configError.message : String(configError),
-        stack: configError instanceof Error ? configError.stack : undefined,
-        timestamp: new Date().toISOString(),
-      });
-      // #endregion
-      throw configError;
-    }
-    
-    if (!responseConfig) {
-      console.log('[AUTO_RESPONSE] Resposta automática desabilitada ou não configurada');
-      // #region agent log
-      console.log('[DEBUG_NO_CONFIG] Sem configuração, retornando:', {
-        timestamp: new Date().toISOString(),
-      });
-      // #endregion
-      return;
-    }
-
-    // #region agent log
-    console.log('[DEBUG_AFTER_CONFIG_CHECK] Depois da verificação de config:', {
-      hasResponseConfig: !!responseConfig,
-      timestamp: new Date().toISOString(),
-    });
-    // #endregion
-
-    // Extrair phone_number_id do payload
-    const phoneNumberId = payload.entry[0]?.changes[0]?.value?.metadata?.phone_number_id;
-    
-    // #region agent log
-    console.log('[DEBUG_PHONE_NUMBER_ID] Verificando phone_number_id:', {
-      phoneNumberId,
-      hasPhoneNumberId: !!phoneNumberId,
-      timestamp: new Date().toISOString(),
-    });
-    // #endregion
-    
-    if (!phoneNumberId) {
-      console.warn('[AUTO_RESPONSE] phone_number_id não encontrado no payload');
-      // #region agent log
-      console.log('[DEBUG_NO_PHONE_ID] Sem phone_number_id, retornando:', {
-        timestamp: new Date().toISOString(),
-      });
-      // #endregion
-      return;
-    }
-
-    // Log detalhado de todos os eventos recebidos para debug
-    console.log('[AUTO_RESPONSE] Eventos recebidos para análise:', {
-      totalEvents: eventsData.length,
-      events: eventsData.map((event) => ({
-        message_type: event.message_type,
-        from_number: event.from_number,
-        message_body: event.message_body,
-        isText: event.message_type === 'text',
-        isInteractive: event.message_type === 'interactive',
-        hasButtonText: event.message_body?.includes('Botão clicado'),
-      })),
-    });
-
-    // Filtrar apenas mensagens de clientes (text ou interactive com button_reply)
-    // Não enviar resposta para status updates (delivered, read, sent, etc.)
-    const clientMessages = eventsData.filter((event) => {
-      const isClientMessage = 
-        event.message_type === 'text' || 
-        (event.message_type === 'interactive' && event.message_body?.includes('Botão clicado'));
-      
-      // Excluir status updates
-      const isStatusUpdate = ['sent', 'delivered', 'read', 'failed'].includes(event.message_type);
-      
-      const shouldProcess = isClientMessage && !isStatusUpdate;
-      
-      console.log('[AUTO_RESPONSE] Analisando evento:', {
-        message_type: event.message_type,
-        from_number: event.from_number,
-        isClientMessage,
-        isStatusUpdate,
-        shouldProcess,
-      });
-      
-      return shouldProcess;
-    });
-
-    if (clientMessages.length === 0) {
-      console.log('[AUTO_RESPONSE] Nenhuma mensagem de cliente encontrada para resposta automática', {
-        totalEvents: eventsData.length,
-        eventTypes: eventsData.map(e => e.message_type),
-      });
-      return;
-    }
-
-    console.log(`[AUTO_RESPONSE] Processando ${clientMessages.length} mensagem(ns) de cliente(s) para resposta automática`);
-
-    // Enviar resposta automática para cada mensagem de cliente
-    // Usar Promise.allSettled para não bloquear se uma falhar
-    const responsePromises = clientMessages.map(async (event) => {
-      try {
-        console.log('[AUTO_RESPONSE] 🔄 Iniciando processamento para evento:', {
-          from: event.from_number,
-          messageType: event.message_type,
-          messageId: event.message_id,
-        });
-
-        console.log('[AUTO_RESPONSE] 📋 Parâmetros antes de chamar sendWhatsAppMessage:', {
-          phoneNumberId,
-          to: event.from_number,
-          messageLength: responseConfig.default_message.length,
-          messagePreview: responseConfig.default_message.substring(0, 50) + '...',
-          hasResponseConfig: !!responseConfig,
-          responseConfigId: responseConfig.id,
-        });
-
-        console.log('[AUTO_RESPONSE] 📞 Chamando sendWhatsAppMessage agora...');
-        
-        // #region agent log
-        console.log('[DEBUG_BEFORE_AWAIT] Antes do await sendWhatsAppMessage:', {
-          phoneNumberId,
-          to: event.from_number,
-          hasMessage: !!responseConfig.default_message,
-          messageLength: responseConfig.default_message?.length,
-          hasFunction: typeof sendWhatsAppMessage === 'function',
-          functionType: typeof sendWhatsAppMessage,
-          hypothesisId: 'D',
-        });
-        // #endregion
-        
-        let result;
-        try {
-          // #region agent log
-          console.log('[DEBUG_ABOUT_TO_CALL] Prestes a chamar sendWhatsAppMessage:', {
-            phoneNumberId,
-            to: event.from_number,
-            messagePreview: responseConfig.default_message?.substring(0, 30),
-            hypothesisId: 'B',
-          });
-          // #endregion
-          
-          // #region agent log
-          console.log('[DEBUG_CALLING_NOW] Chamando sendWhatsAppMessage AGORA:', {
-            timestamp: new Date().toISOString(),
-            hypothesisId: 'B',
-          });
-          // #endregion
-          
-          // Criar a Promise antes de await para verificar se está sendo criada
-          const sendPromise = sendWhatsAppMessage({
-            phoneNumberId: phoneNumberId,
-            to: event.from_number,
-            message: responseConfig.default_message,
-          });
-          
-          // #region agent log
-          console.log('[DEBUG_PROMISE_CREATED] Promise criada:', {
-            hasPromise: !!sendPromise,
-            isPromise: sendPromise instanceof Promise,
-            timestamp: new Date().toISOString(),
-            hypothesisId: 'C',
-          });
-          // #endregion
-          
-          result = await sendPromise;
-          
-          // #region agent log
-          console.log('[DEBUG_AFTER_AWAIT] Depois do await sendWhatsAppMessage:', {
-            hasResult: !!result,
-            resultSuccess: result?.success,
-            resultError: result?.error,
-            resultKeys: result ? Object.keys(result) : [],
-            hypothesisId: 'C',
-          });
-          // #endregion
-        } catch (awaitError) {
-          // #region agent log
-          console.error('[DEBUG_AWAIT_ERROR] Erro no await sendWhatsAppMessage:', {
-            errorMessage: awaitError instanceof Error ? awaitError.message : String(awaitError),
-            errorType: awaitError instanceof Error ? awaitError.constructor.name : typeof awaitError,
-            stack: awaitError instanceof Error ? awaitError.stack : undefined,
-            hypothesisId: 'C',
-          });
-          // #endregion
-          throw awaitError;
-        }
-
-        console.log('[AUTO_RESPONSE] ✅ sendWhatsAppMessage retornou:', {
-          hasResult: !!result,
-          resultType: typeof result,
-          resultKeys: result ? Object.keys(result) : [],
-        });
-
-        console.log('[AUTO_RESPONSE] 📊 Resultado detalhado do envio:', {
-          success: result?.success,
-          messageId: result?.messageId,
-          error: result?.error,
-          to: event.from_number,
-          fullResult: JSON.stringify(result),
-        });
-
-        if (result.success) {
-          console.log('[AUTO_RESPONSE] ✅ Resposta automática enviada com sucesso:', {
-            to: event.from_number,
-            messageId: result.messageId,
-          });
-        } else {
-          console.error('[AUTO_RESPONSE] ❌ Erro ao enviar resposta automática:', {
-            to: event.from_number,
-            error: result.error,
-            phoneNumberId,
-          });
-        }
-      } catch (error) {
-        console.error('[AUTO_RESPONSE] ❌ Erro inesperado ao enviar resposta automática:', {
-          to: event.from_number,
-          error: error instanceof Error ? error.message : 'Erro desconhecido',
-          errorType: error instanceof Error ? error.constructor.name : typeof error,
-          stack: error instanceof Error ? error.stack : undefined,
-          fullError: JSON.stringify(error, Object.getOwnPropertyNames(error)),
-        });
-      }
-    });
-
-    // Aguardar todas as respostas serem processadas (mas não bloquear o webhook)
-    await Promise.allSettled(responsePromises);
-    
-    console.log('[AUTO_RESPONSE] Processamento de respostas automáticas concluído');
-  } catch (error) {
-    console.error('[AUTO_RESPONSE] Erro ao processar respostas automáticas:', error);
-    // Não propagar o erro para não afetar o webhook
-  }
 }
 
 /**
@@ -488,6 +204,18 @@ export async function POST(request: NextRequest) {
         throw result.error;
       }
 
+      // Processar resposta automática em background (não bloquear)
+      // Verificar se é mensagem de texto ou interativa (button/quick reply)
+      const autoReplyTypes = ['text', 'interactive', 'button', 'image', 'audio', 'video', 'document', 'location'];
+      if (autoReplyTypes.includes(eventData.message_type)) {
+        processAutoReply(eventData).catch((err) => {
+          console.error('[AUTO_REPLY] Erro ao processar resposta automática:', {
+            message_id: eventData.message_id,
+            error: err instanceof Error ? err.message : 'Erro desconhecido',
+          });
+        });
+      }
+
       return result;
     });
 
@@ -515,43 +243,6 @@ export async function POST(request: NextRequest) {
     console.log(
       `Webhook processado: ${successCount}/${allEventsData.length} eventos salvos${failedCount > 0 ? `, ${failedCount} falharam` : ''}`
     );
-
-    // Processar respostas automáticas para mensagens de clientes
-    // IMPORTANTE: Não usar await aqui para não bloquear a resposta do webhook
-    // Mas garantir que a função execute completamente usando setImmediate
-    // #region agent log
-    console.log('[DEBUG_STARTING_PROCESS] Iniciando processAutomaticResponses:', {
-      hasBody: !!body,
-      eventsCount: allEventsData.length,
-      timestamp: new Date().toISOString(),
-    });
-    // #endregion
-    
-    // Usar setImmediate para garantir que a função execute após o retorno do webhook
-    // Isso evita que a execução seja cancelada quando o webhook retorna
-    setImmediate(async () => {
-      try {
-        // #region agent log
-        console.log('[DEBUG_SETIMMEDIATE] Executando processAutomaticResponses dentro de setImmediate:', {
-          timestamp: new Date().toISOString(),
-        });
-        // #endregion
-        
-        await processAutomaticResponses(body, allEventsData);
-        
-        // #region agent log
-        console.log('[DEBUG_SETIMMEDIATE_COMPLETE] processAutomaticResponses concluído:', {
-          timestamp: new Date().toISOString(),
-        });
-        // #endregion
-      } catch (error) {
-        console.error('[AUTO_RESPONSE] Erro ao processar respostas automáticas:', {
-          error: error instanceof Error ? error.message : String(error),
-          stack: error instanceof Error ? error.stack : undefined,
-          fullError: JSON.stringify(error, Object.getOwnPropertyNames(error)),
-        });
-      }
-    });
 
     // Sempre retornar 200 OK para a Meta, mesmo se houver erros
     // A Meta pode reenviar se retornarmos erro

@@ -7,7 +7,6 @@ import { getSupabaseClient } from './supabase';
 export interface ResponseConfig {
   id: string;
   default_message: string;
-  time_window_hours: number;
   enabled: boolean;
   created_at: string;
   updated_at: string;
@@ -24,267 +23,55 @@ const CACHE_TTL = 30000; // 30 segundos
  * @returns Configuração ativa ou null se não houver configuração habilitada
  */
 export async function getResponseConfig(maxRetries: number = 2): Promise<ResponseConfig | null> {
-  // #region agent log
-  console.log('[DEBUG_GET_CONFIG_ENTRY] getResponseConfig chamada:', {
-    maxRetries,
-    hasCache: !!configCache,
-    cacheAge: configCache ? Date.now() - configCache.timestamp : null,
-    timestamp: new Date().toISOString(),
-  });
-  // #endregion
-  
   // Verificar cache primeiro
   if (configCache && (Date.now() - configCache.timestamp) < CACHE_TTL) {
-    // #region agent log
-    console.log('[DEBUG_GET_CONFIG_CACHE_HIT] Usando cache:', {
+    console.log('[RESPONSE_CONFIG] Usando cache:', {
       hasConfig: !!configCache.config,
       cacheAge: Date.now() - configCache.timestamp,
-      timestamp: new Date().toISOString(),
     });
-    // #endregion
     return configCache.config;
   }
-  
-  // #region agent log
-  console.log('[DEBUG_GET_CONFIG_CACHE_MISS] Cache não disponível, buscando do banco:', {
-    timestamp: new Date().toISOString(),
-  });
-  // #endregion
-  
-  let lastError: any = null;
+
+  let lastError: Error | null = null;
 
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     try {
-      // #region agent log
-      console.log('[DEBUG_GET_CONFIG_ATTEMPT] Tentativa de buscar config:', {
-        attempt: attempt + 1,
-        maxRetries: maxRetries + 1,
-        timestamp: new Date().toISOString(),
-      });
-      // #endregion
-      
       const supabase = getSupabaseClient();
-      
-      // #region agent log
-      console.log('[DEBUG_GET_CONFIG_SUPABASE] Cliente Supabase obtido:', {
-        hasSupabase: !!supabase,
-        timestamp: new Date().toISOString(),
-      });
-      // #endregion
 
-      // #region agent log
-      console.log('[DEBUG_GET_CONFIG_QUERY] Executando query no Supabase:', {
-        timestamp: new Date().toISOString(),
-      });
-      // #endregion
-      
-      // Buscar configuração
-      // #region agent log
-      console.log('[DEBUG_GET_CONFIG_BEFORE_QUERY] Antes de executar query:', {
-        timestamp: new Date().toISOString(),
-      });
-      // #endregion
-      
-      // Criar a query primeiro
-      const query = supabase
+      const { data, error } = await supabase
         .from('response_config')
         .select('*')
         .eq('enabled', true)
         .limit(1)
         .single();
-      
-      // #region agent log
-      console.log('[DEBUG_GET_CONFIG_QUERY_CREATED] Query criada, aguardando resultado:', {
-        hasQuery: !!query,
-        isPromise: query instanceof Promise,
-        hasThen: typeof (query as any)?.then === 'function',
-        timestamp: new Date().toISOString(),
-      });
-      // #endregion
-      
-      // Adicionar timeout manual de 3 segundos usando AbortController
-      const abortController = new AbortController();
-      let timeoutId: NodeJS.Timeout | null = null;
-      
-      // #region agent log
-      console.log('[DEBUG_GET_CONFIG_TIMEOUT_SETUP] Configurando timeout de 3 segundos:', {
-        timestamp: new Date().toISOString(),
-      });
-      // #endregion
-      
-      timeoutId = setTimeout(() => {
-        // #region agent log
-        console.error('[DEBUG_GET_CONFIG_TIMEOUT] Query timeout após 3 segundos - abortando');
-        // #endregion
-        abortController.abort();
-      }, 3000);
-      
-      let queryResult;
-      try {
-        // #region agent log
-        console.log('[DEBUG_GET_CONFIG_AWAITING] Aguardando resultado da query (com timeout de 3s):', {
-          timestamp: new Date().toISOString(),
-        });
-        // #endregion
-        
-        // Executar query diretamente com tratamento de timeout
-        const queryPromise = query;
-        
-        // Criar uma promise que rejeita após timeout
-        const timeoutPromise = new Promise<never>((_, reject) => {
-          setTimeout(() => {
-            if (timeoutId) {
-              clearTimeout(timeoutId);
-              timeoutId = null;
-            }
-            // #region agent log
-            console.error('[DEBUG_GET_CONFIG_TIMEOUT_REJECT] Timeout rejeitando promise:', {
-              timestamp: new Date().toISOString(),
-            });
-            // #endregion
-            reject(new Error('Query timeout após 3 segundos'));
-          }, 3000);
-        });
-        
-        // #region agent log
-        console.log('[DEBUG_GET_CONFIG_RACE_START] Iniciando Promise.race:', {
-          timestamp: new Date().toISOString(),
-        });
-        // #endregion
-        
-        // Usar Promise.race para adicionar timeout
-        queryResult = await Promise.race([
-          queryPromise.then((result) => {
-            // #region agent log
-            console.log('[DEBUG_GET_CONFIG_QUERY_RESOLVED] Query resolveu antes do timeout:', {
-              hasData: !!result.data,
-              hasError: !!result.error,
-              timestamp: new Date().toISOString(),
-            });
-            // #endregion
-            if (timeoutId) {
-              clearTimeout(timeoutId);
-              timeoutId = null;
-            }
-            return result;
-          }),
-          timeoutPromise,
-        ]) as { data: ResponseConfig | null; error: any };
-        
-        // #region agent log
-        console.log('[DEBUG_GET_CONFIG_AWAIT_COMPLETE] Await completado:', {
-          hasResult: !!queryResult,
-          hasData: !!queryResult?.data,
-          hasError: !!queryResult?.error,
-          errorCode: queryResult?.error?.code,
-          timestamp: new Date().toISOString(),
-        });
-        // #endregion
-      } catch (queryError: any) {
-        // #region agent log
-        console.error('[DEBUG_GET_CONFIG_QUERY_ERROR] Erro ao executar query:', {
-          error: queryError instanceof Error ? queryError.message : String(queryError),
-          stack: queryError instanceof Error ? queryError.stack : undefined,
-          isTimeout: queryError?.message?.includes('timeout'),
-          timestamp: new Date().toISOString(),
-        });
-        // #endregion
-        
-        if (timeoutId) {
-          clearTimeout(timeoutId);
-          timeoutId = null;
-        }
-        
-        // Se foi timeout, usar cache se disponível
-        if (queryError?.message?.includes('timeout')) {
-          console.error('[RESPONSE_CONFIG] Timeout ao buscar configuração após 3 segundos');
-          if (configCache) {
-            // #region agent log
-            console.log('[DEBUG_GET_CONFIG_TIMEOUT_CACHE] Usando cache devido a timeout:', {
-              timestamp: new Date().toISOString(),
-            });
-            // #endregion
-            return configCache.config;
-          }
-          return null;
-        }
-        
-        throw queryError;
-      } finally {
-        // Garantir que o timeout seja limpo
-        if (timeoutId) {
-          clearTimeout(timeoutId);
-          timeoutId = null;
-        }
-      }
-      
-      // Verificar se foi timeout (não deveria chegar aqui se foi timeout, mas por segurança)
-      if (queryResult?.error?.code === 'TIMEOUT') {
-        console.error('[RESPONSE_CONFIG] Timeout ao buscar configuração após 3 segundos');
-        if (configCache) {
-          // #region agent log
-          console.log('[DEBUG_GET_CONFIG_TIMEOUT_CACHE] Usando cache devido a timeout:', {
-            timestamp: new Date().toISOString(),
-          });
-          // #endregion
-          return configCache.config;
-        }
-        return null;
-      }
-      
-      const { data, error } = queryResult;
-      
-      // #region agent log
-      console.log('[DEBUG_GET_CONFIG_RESULT] Resultado da query:', {
-        hasData: !!data,
-        hasError: !!error,
-        errorCode: error?.code,
-        errorMessage: error?.message,
-        dataKeys: data ? Object.keys(data) : [],
-        timestamp: new Date().toISOString(),
-      });
-      // #endregion
 
       if (error) {
         // Se não encontrar nenhum registro, não é um erro crítico
         if (error.code === 'PGRST116') {
-          console.log('[RESPONSE_CONFIG] Nenhuma configuração de resposta automática encontrada ou desabilitada');
-          // Atualizar cache com null
-          configCache = {
-            config: null,
-            timestamp: Date.now(),
-          };
+          console.log('[RESPONSE_CONFIG] Nenhuma configuração de resposta automática habilitada');
+          configCache = { config: null, timestamp: Date.now() };
           return null;
         }
 
         // Se for erro de conexão e ainda tiver tentativas, tentar novamente
-        if (
-          (error.message?.includes('fetch failed') ||
-            error.message?.includes('SocketError') ||
-            error.message?.includes('UND_ERR_SOCKET') ||
-            error.message?.includes('ECONNRESET') ||
-            error.message?.includes('ETIMEDOUT')) &&
-          attempt < maxRetries
-        ) {
-          const delay = (attempt + 1) * 1000; // Backoff exponencial simples
-          console.warn(`[RESPONSE_CONFIG] Erro de conexão (tentativa ${attempt + 1}/${maxRetries + 1}), tentando novamente em ${delay}ms...`, {
-            error: error.message,
-          });
+        if (isConnectionError(error.message) && attempt < maxRetries) {
+          const delay = (attempt + 1) * 1000;
+          console.warn(`[RESPONSE_CONFIG] Erro de conexão (tentativa ${attempt + 1}/${maxRetries + 1}), tentando novamente em ${delay}ms...`);
           await new Promise((resolve) => setTimeout(resolve, delay));
-          lastError = error;
+          lastError = new Error(error.message);
           continue;
         }
 
         console.error('[RESPONSE_CONFIG] Erro ao buscar configuração:', {
           code: error.code,
           message: error.message,
-          details: error.details,
         });
         return null;
       }
 
       if (!data) {
-        console.log('[RESPONSE_CONFIG] Nenhuma configuração de resposta automática encontrada');
+        console.log('[RESPONSE_CONFIG] Nenhuma configuração encontrada');
+        configCache = { config: null, timestamp: Date.now() };
         return null;
       }
 
@@ -294,69 +81,61 @@ export async function getResponseConfig(maxRetries: number = 2): Promise<Respons
         return null;
       }
 
-      console.log('[RESPONSE_CONFIG] Configuração de resposta automática encontrada:', {
+      console.log('[RESPONSE_CONFIG] Configuração encontrada:', {
         id: data.id,
         enabled: data.enabled,
         messageLength: data.default_message.length,
       });
 
       const config = data as ResponseConfig;
-      
-      // Atualizar cache
-      configCache = {
-        config,
-        timestamp: Date.now(),
-      };
-      
-      // #region agent log
-      console.log('[DEBUG_GET_CONFIG_CACHE_UPDATED] Cache atualizado:', {
-        timestamp: new Date().toISOString(),
-      });
-      // #endregion
+      configCache = { config, timestamp: Date.now() };
 
       return config;
-    } catch (error: any) {
-      lastError = error;
+    } catch (error) {
+      lastError = error instanceof Error ? error : new Error(String(error));
 
-      // Se for erro de conexão e ainda tiver tentativas, tentar novamente
-      if (
-        (error?.message?.includes('fetch failed') ||
-          error?.message?.includes('SocketError') ||
-          error?.message?.includes('UND_ERR_SOCKET') ||
-          error?.message?.includes('ECONNRESET') ||
-          error?.message?.includes('ETIMEDOUT') ||
-          error?.message?.includes('Timeout')) &&
-        attempt < maxRetries
-      ) {
+      if (isConnectionError(lastError.message) && attempt < maxRetries) {
         const delay = (attempt + 1) * 1000;
-        console.warn(`[RESPONSE_CONFIG] Erro de conexão (tentativa ${attempt + 1}/${maxRetries + 1}), tentando novamente em ${delay}ms...`, {
-          error: error?.message || 'Erro desconhecido',
-        });
+        console.warn(`[RESPONSE_CONFIG] Erro de conexão (tentativa ${attempt + 1}/${maxRetries + 1}), tentando novamente em ${delay}ms...`);
         await new Promise((resolve) => setTimeout(resolve, delay));
         continue;
       }
 
-      // Se não for erro de conexão ou esgotaram as tentativas, logar e retornar null
-      if (attempt === maxRetries) {
-        console.error('[RESPONSE_CONFIG] Erro inesperado ao buscar configuração após todas as tentativas:', {
-          error: error?.message || 'Erro desconhecido',
-          stack: error?.stack,
-        });
-      }
+      console.error('[RESPONSE_CONFIG] Erro inesperado:', lastError.message);
     }
   }
 
   // Se chegou aqui, todas as tentativas falharam
   if (lastError) {
-    console.error('[RESPONSE_CONFIG] Falha ao buscar configuração após todas as tentativas:', {
-      error: lastError?.message || 'Erro desconhecido',
-    });
-    // Atualizar cache com null para evitar tentativas repetidas
-    configCache = {
-      config: null,
-      timestamp: Date.now(),
-    };
+    console.error('[RESPONSE_CONFIG] Falha após todas as tentativas:', lastError.message);
   }
 
   return null;
+}
+
+/**
+ * Verifica se o erro é um erro de conexão temporário
+ */
+function isConnectionError(message: string | undefined): boolean {
+  if (!message) return false;
+  
+  const connectionErrors = [
+    'fetch failed',
+    'SocketError',
+    'UND_ERR_SOCKET',
+    'ECONNRESET',
+    'ETIMEDOUT',
+    'ECONNREFUSED',
+  ];
+  
+  return connectionErrors.some((err) => message.includes(err));
+}
+
+/**
+ * Invalida o cache de configuração
+ * Útil para forçar uma nova busca após atualizações
+ */
+export function invalidateConfigCache(): void {
+  configCache = null;
+  console.log('[RESPONSE_CONFIG] Cache invalidado');
 }

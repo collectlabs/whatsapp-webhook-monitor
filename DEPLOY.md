@@ -20,6 +20,8 @@ Acesse o dashboard da Vercel e configure as seguintes variáveis de ambiente:
    - `SUPABASE_URL`: `https://uxioxvsldxusgxtldmcd.supabase.co`
    - `SUPABASE_SERVICE_ROLE_KEY`: [Obtenha no dashboard do Supabase em Settings > API > service_role key]
    - `WEBHOOK_VERIFY_TOKEN`: [Crie um token aleatório seguro para verificação do webhook]
+   - `WHATSAPP_ACCESS_TOKEN`: [Token de acesso da WhatsApp Cloud API]
+   - `WHATSAPP_PHONE_NUMBER_ID`: [ID do número de telefone do WhatsApp Business - ex: 823349844204985]
 
 ### 2. Obter Service Role Key do Supabase
 
