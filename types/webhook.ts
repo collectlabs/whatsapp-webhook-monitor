@@ -107,7 +107,17 @@ export interface WhatsAppStatus {
   recipient_id: string;
 }
 
-// Tipo para dados estruturados a serem salvos no Supabase
+/** Payload de account_alerts (webhook field "account_alerts") */
+export interface WhatsAppAccountAlert {
+  entity_type: string;
+  entity_id: number;
+  alert_severity: string;
+  alert_status: string;
+  alert_type: string;
+  alert_description: string;
+}
+
+// Tipo para dados estruturados a serem salvos no Supabase (webhook_messages)
 export interface WhatsAppMessageData {
   message_id: string;
   from_number: string;
@@ -116,4 +126,22 @@ export interface WhatsAppMessageData {
   message_type: string;
   message_body: string | null;
   raw_payload: WhatsAppWebhookPayload;
+  /** Campo "field" do webhook (ex.: messages, account_alerts) — usado para rotear para webhook_messages vs webhook_alerts */
+  field?: string;
+  /** entry.id = WhatsApp Business Account ID (waba_id) */
+  waba_id?: string;
+}
+
+/** Dados para insert em webhook_alerts */
+export interface WebhookAlertData {
+  waba_id?: string | null;
+  field?: string | null;
+  object?: string | null;
+  entity_type?: string | null;
+  entity_id?: string | null;
+  alert_type?: string | null;
+  alert_severity?: string | null;
+  alert_status?: string | null;
+  alert_description?: string | null;
+  raw_payload: WhatsAppWebhookPayload | Record<string, unknown>;
 }

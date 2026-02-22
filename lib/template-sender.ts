@@ -2,6 +2,8 @@
  * Módulo para envio de mensagens de template via WhatsApp Cloud API
  */
 
+import type { WhatsAppCredentials } from './whatsapp-accounts';
+
 // Tipos para header do template
 export interface TemplateHeaderText {
   type: 'text';
@@ -165,15 +167,17 @@ function buildTemplateComponents(params: SendTemplateParams): MetaTemplateCompon
 /**
  * Envia uma mensagem de template via WhatsApp Cloud API
  * @param params Parâmetros para envio do template
+ * @param credentials Opcional: token e phone_number_id (quando informado, não usa env)
  * @returns Resposta da API do WhatsApp ou erro
  */
 export async function sendWhatsAppTemplate(
-  params: SendTemplateParams
+  params: SendTemplateParams,
+  credentials?: WhatsAppCredentials
 ): Promise<{ success: boolean; messageId?: string; error?: string }> {
   const { to, template_name, language = 'pt_BR' } = params;
 
-  const accessToken = process.env.WHATSAPP_ACCESS_TOKEN;
-  const phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID;
+  const accessToken = credentials?.accessToken ?? process.env.WHATSAPP_ACCESS_TOKEN;
+  const phoneNumberId = credentials?.phoneNumberId ?? process.env.WHATSAPP_PHONE_NUMBER_ID;
 
   // Log de debug (sem expor token completo)
   console.log('[TEMPLATE_SENDER] Iniciando envio de template:', {
@@ -185,6 +189,7 @@ export async function sendWhatsAppTemplate(
     buttonParamsCount: params.button_parameters?.length || 0,
     hasAccessToken: !!accessToken,
     phoneNumberId,
+    usingCredentials: !!credentials,
   });
 
   // Validar credenciais

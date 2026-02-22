@@ -6,6 +6,10 @@ import {
   TemplateHeader,
   ButtonParameter,
 } from '@/lib/template-sender';
+import { getCredentials, getWabaName, getBmByWabaId } from '@/lib/whatsapp-accounts';
+import { isAllowedForSending } from '@/lib/auto-reply-phone-config';
+import { refreshHealthForWaba } from '@/lib/meta-phone-health';
+import { toSaoPauloISOString, toSaoPauloTimestampString } from '@/lib/date-utils';
 
 /**
  * Interface para o body do request simplificado
@@ -17,6 +21,10 @@ interface SendTemplateRequestBody {
   header?: TemplateHeader;
   body_parameters?: string[];
   button_parameters?: ButtonParameter[];
+  /** Identificador da WABA (conta). Obrigatório; contas vêm da tabela wabas no Supabase. */
+  waba_id: string;
+  /** phone_number_id de onde sairá a mensagem. Se omitido, usa o primeiro da conta. */
+  phone_id?: string;
 }
 
 /**
@@ -44,6 +52,10 @@ function validateRequestBody(body: SendTemplateRequestBody): { valid: boolean; e
 
   if (!body.template_name) {
     return { valid: false, error: 'Campo obrigatório "template_name" não informado' };
+  }
+
+  if (!body.waba_id?.trim()) {
+    return { valid: false, error: 'Campo obrigatório "waba_id" não informado. Contas vêm da tabela wabas no Supabase.' };
   }
 
   // Validar formato do número (deve conter apenas números)
@@ -86,6 +98,8 @@ export async function POST(request: NextRequest) {
       to: body.to,
       template_name: body.template_name,
       language: body.language,
+      waba_id: body.waba_id,
+      phone_id: body.phone_id,
       hasHeader: !!body.header,
       bodyParamsCount: body.body_parameters?.length || 0,
       buttonParamsCount: body.button_parameters?.length || 0,
@@ -100,9 +114,31 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 4. Criar registro inicial no Supabase com status 'pending'
+    // 4. Resolver credenciais (waba_id obrigatório; token no env: WHATSAPP_ACCESS_TOKEN_<NOME_BM>)
+    let credentials: { accessToken: string; phoneNumberId: string };
+    try {
+      credentials = await getCredentials(body.waba_id!.trim(), body.phone_id);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Erro ao resolver credenciais';
+      return NextResponse.json(
+        { success: false, error: msg },
+        { status: 400 }
+      );
+    }
+
+    const phoneNumberId = credentials.phoneNumberId;
+
+    // 4.1 Verificar se o número está habilitado para envio (allowed_for_sending na config)
+    const allowed = await isAllowedForSending(phoneNumberId);
+    if (!allowed) {
+      return NextResponse.json(
+        { success: false, error: `O número ${phoneNumberId} não está habilitado para envio. Ative "allowed_for_sending" na tabela auto_reply_phone_config.` },
+        { status: 400 }
+      );
+    }
+
+    // 5. Criar registro inicial no Supabase com status 'pending'
     const supabase = getSupabaseClient();
-    const phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID || '';
 
     const messageContent = JSON.stringify({
       header: body.header,
@@ -110,21 +146,32 @@ export async function POST(request: NextRequest) {
       button_parameters: body.button_parameters,
     });
 
+    const nowSp = toSaoPauloTimestampString();
+    const wabaId = body.waba_id!.trim();
+    const wabaName = await getWabaName(wabaId);
+    const bm = await getBmByWabaId(wabaId);
+
     const { data: insertedMessage, error: insertError } = await supabase
       .from('messages')
       .insert({
-        phone_number_id: phoneNumberId,
+        meta_phone_number_id: phoneNumberId,
         recipient_phone: body.to,
         message_type: 'template',
         template_name: body.template_name,
         message_content: messageContent,
         status: 'pending',
+        meta_waba_id: wabaId,
+        waba_name: wabaName,
+        meta_bm_id: bm?.bm_id ?? null,
+        bm_name: bm?.bm_name ?? null,
+        created_at: nowSp,
+        updated_at: nowSp,
         metadata: {
           language: body.language || 'pt_BR',
           header: body.header,
           body_parameters: body.body_parameters,
           button_parameters: body.button_parameters,
-          request_timestamp: new Date().toISOString(),
+          request_timestamp: toSaoPauloISOString(),
         },
       })
       .select('id')
@@ -141,7 +188,7 @@ export async function POST(request: NextRequest) {
     const messageId = insertedMessage.id;
     console.log('[SEND_TEMPLATE] Registro criado no Supabase:', { messageId });
 
-    // 5. Preparar parâmetros e enviar template
+    // 6. Preparar parâmetros e enviar template (com credenciais resolvidas)
     const templateParams: SendTemplateParams = {
       to: body.to,
       template_name: body.template_name,
@@ -151,17 +198,17 @@ export async function POST(request: NextRequest) {
       button_parameters: body.button_parameters,
     };
 
-    const result = await sendWhatsAppTemplate(templateParams);
+    const result = await sendWhatsAppTemplate(templateParams, credentials);
 
-    // 6. Atualizar registro com resultado
+    // 7. Atualizar registro com resultado
     const updateData: Record<string, unknown> = {
-      updated_at: new Date().toISOString(),
+      updated_at: toSaoPauloTimestampString(),
     };
 
     if (result.success) {
       updateData.status = 'sent';
       updateData.whatsapp_message_id = result.messageId;
-      updateData.sent_at = new Date().toISOString();
+      updateData.sent_at = toSaoPauloTimestampString();
     } else {
       updateData.status = 'failed';
       updateData.error_message = result.error;
@@ -177,6 +224,11 @@ export async function POST(request: NextRequest) {
       // Não retornar erro aqui, pois a mensagem já foi enviada (ou não)
     }
 
+    // Atualizar saúde da WABA em background (opcional)
+    refreshHealthForWaba(wabaId).catch((err) =>
+      console.error('[SEND_TEMPLATE] refreshHealthForWaba falhou para waba_id', wabaId, err)
+    );
+
     const duration = Date.now() - startTime;
     console.log('[SEND_TEMPLATE] Processamento concluído:', {
       messageId,
@@ -185,7 +237,7 @@ export async function POST(request: NextRequest) {
       duration: `${duration}ms`,
     });
 
-    // 7. Retornar resposta
+    // 8. Retornar resposta
     if (result.success) {
       return NextResponse.json({
         success: true,
@@ -222,7 +274,7 @@ export async function GET() {
     endpoint: '/api/send-template',
     method: 'POST',
     description: 'Envia mensagens de template via WhatsApp Cloud API',
-    authentication: 'API Key via header X-API-Key',
+    authentication: 'Token de segurança obrigatório: header X-API-Key (valor de API_KEY no env)',
     body_format: {
       to: 'string (obrigatório) - Número do destinatário com código do país',
       template_name: 'string (obrigatório) - Nome do template aprovado na Meta',
@@ -230,6 +282,8 @@ export async function GET() {
       header: 'object (opcional) - Parâmetros do header',
       body_parameters: 'array (opcional) - Array de strings para variáveis do body',
       button_parameters: 'array (opcional) - Array de objetos { index, text } para botões',
+      waba_id: 'string (obrigatório) - Identificador da WABA (id na tabela wabas no Supabase)',
+      phone_id: 'string (opcional) - phone_number_id de onde sairá a mensagem. Se omitido, usa o primeiro da conta',
     },
     header_options: {
       text: '{ type: "text", parameters: ["valor"] }',
@@ -237,5 +291,6 @@ export async function GET() {
       video: '{ type: "video", url: "https://..." }',
       document: '{ type: "document", url: "https://...", filename: "arquivo.pdf" }',
     },
+    note: 'Contas (BMs e WABAs) vêm das tabelas bms e wabas no Supabase. Token por BM no .env: WHATSAPP_ACCESS_TOKEN_<NOME_BM>. O token da Meta não é enviado na requisição.',
   });
 }

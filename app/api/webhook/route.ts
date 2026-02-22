@@ -3,8 +3,11 @@ import { getSupabaseClient } from '@/lib/supabase';
 import {
   WhatsAppWebhookPayload,
 } from '@/types/webhook';
-import { processWebhookPayload } from '@/lib/webhook-processor';
+import { processWebhookPayload, WEBHOOK_ALERT_FIELDS } from '@/lib/webhook-processor';
 import { processAutoReply } from '@/lib/auto-reply-service';
+import { getBmByWabaId, getWabaName } from '@/lib/whatsapp-accounts';
+import { refreshHealthForWaba } from '@/lib/meta-phone-health';
+import { toSaoPauloISOString, toSaoPauloTimestampString } from '@/lib/date-utils';
 
 /**
  * GET - Verificação do webhook pela Meta
@@ -63,38 +66,110 @@ export async function GET(request: NextRequest) {
   return new NextResponse('Forbidden', { status: 403 });
 }
 
+/** Payload de teste da Meta (formato "sample" ao clicar em Test no webhook) */
+function isMetaTestSamplePayload(body: any): body is { sample: { field: string; value: any } } {
+  return (
+    body &&
+    typeof body === 'object' &&
+    body.sample &&
+    typeof body.sample === 'object' &&
+    typeof body.sample.field === 'string' &&
+    body.sample.value != null
+  );
+}
+
 /**
  * POST - Receber webhooks de mensagens do WhatsApp
  */
 export async function POST(request: NextRequest) {
   try {
-    const body: WhatsAppWebhookPayload = await request.json();
+    const body = await request.json();
 
     console.log('[DEBUG] Webhook POST recebido:', {
-      object: body.object,
-      entriesCount: body.entry?.length || 0,
-      hasEntries: !!body.entry,
-      timestamp: new Date().toISOString(),
+      object: body?.object,
+      entriesCount: body?.entry?.length ?? 0,
+      hasSample: !!body?.sample,
+      sampleField: body?.sample?.field,
+      timestamp: toSaoPauloISOString(),
     });
 
-    // Validar estrutura básica do payload
-    if (!body.object || !body.entry || !Array.isArray(body.entry)) {
+    // Formato de TESTE da Meta: { sample: { field: "account_alerts", value: { ... } } }
+    // A Meta envia esse formato ao clicar em "Test" no painel do webhook (não tem object/entry)
+    if (isMetaTestSamplePayload(body)) {
+      const { sample } = body;
+      const supabase = getSupabaseClient();
+      if (sample.field === 'account_alerts' && sample.value?.alert_type != null) {
+        const alert = sample.value;
+        console.log('[WEBHOOK] Payload de teste account_alerts (sample) recebido, salvando em webhook_alerts:', {
+          alert_type: alert.alert_type,
+          entity_id: alert.entity_id,
+        });
+        const result = await supabase.from('webhook_alerts').insert({
+          meta_waba_id: null,
+          meta_bm_id: null,
+          bm_name: null,
+          field: sample.field,
+          object: (body as Record<string, unknown>).object ?? null,
+          entity_type: alert.entity_type ?? null,
+          entity_id: alert.entity_id != null ? String(alert.entity_id) : null,
+          alert_type: alert.alert_type ?? null,
+          alert_severity: alert.alert_severity ?? null,
+          alert_status: alert.alert_status ?? null,
+          alert_description: alert.alert_description ?? null,
+          raw_payload: body,
+        });
+        if (result.error) {
+          console.error('[WEBHOOK] Erro ao salvar account_alert (teste):', result.error);
+        } else {
+          console.log('[WEBHOOK] account_alert (teste) salvo em webhook_alerts com sucesso');
+        }
+        return new NextResponse('OK', { status: 200 });
+      }
+      // Outro campo de sample (business_capability_update, template_category_update, etc.) → webhook_alerts
+      console.log('[WEBHOOK] Payload sample com field:', sample.field, '- salvando em webhook_alerts');
+      await supabase.from('webhook_alerts').insert({
+        meta_waba_id: null,
+        meta_bm_id: null,
+        bm_name: null,
+        field: sample.field,
+        object: (body as Record<string, unknown>).object ?? null,
+        entity_type: null,
+        entity_id: null,
+        alert_type: null,
+        alert_severity: null,
+        alert_status: null,
+        alert_description: null,
+        raw_payload: body,
+      });
+      return new NextResponse('OK', { status: 200 });
+    }
+
+    // Payload padrão: object + entry
+    const bodyTyped = body as WhatsAppWebhookPayload;
+    if (!bodyTyped.object || !bodyTyped.entry || !Array.isArray(bodyTyped.entry)) {
       console.error('Payload inválido:', JSON.stringify(body, null, 2));
       return new NextResponse('Invalid payload', { status: 400 });
     }
 
     // Processar apenas webhooks do tipo "whatsapp_business_account"
-    if (body.object !== 'whatsapp_business_account') {
-      console.log('Webhook ignorado - objeto não é whatsapp_business_account:', body.object);
+    if (bodyTyped.object !== 'whatsapp_business_account') {
+      console.log('Webhook ignorado - objeto não é whatsapp_business_account:', bodyTyped.object);
       return new NextResponse('OK', { status: 200 });
     }
 
     // Log detalhado do payload para debug
+    const hasAccountAlerts = bodyTyped.entry?.some((e) =>
+      e.changes?.some((c) => c.field === 'account_alerts')
+    );
+    if (hasAccountAlerts) {
+      console.log('[WEBHOOK] account_alerts detectado no payload');
+    }
     const payloadDetails = {
-      entries: body.entry.map((entry) => ({
+      entries: bodyTyped.entry.map((entry) => ({
         id: entry.id,
         changes: entry.changes.map((change) => ({
           field: change.field,
+          hasAccountAlerts: change.field === 'account_alerts',
           hasMessages: !!change.value?.messages,
           hasStatuses: !!change.value?.statuses,
           messagesCount: change.value?.messages?.length || 0,
@@ -114,10 +189,10 @@ export async function POST(request: NextRequest) {
     };
 
     console.log('[DEBUG] Payload detalhado antes do processamento:', JSON.stringify(payloadDetails, null, 2));
-    console.log('[DEBUG] Payload completo (raw):', JSON.stringify(body, null, 2));
+    console.log('[DEBUG] Payload completo (raw):', JSON.stringify(bodyTyped, null, 2));
 
     // Extrair e processar TODOS os eventos (messages, statuses, e qualquer outro tipo)
-    const allEventsData = processWebhookPayload(body);
+    const allEventsData = processWebhookPayload(bodyTyped);
 
     console.log(`[DEBUG] Eventos extraídos: ${allEventsData.length}`, {
       events: allEventsData.map((event) => ({
@@ -133,8 +208,8 @@ export async function POST(request: NextRequest) {
     if (allEventsData.length === 0) {
       console.log('[DEBUG] Nenhum evento encontrado no webhook - salvando payload bruto completo');
       console.log('[DEBUG] Estrutura do payload que não gerou eventos:', {
-        entryCount: body.entry?.length,
-        changes: body.entry?.flatMap(e => e.changes.map(c => ({
+        entryCount: bodyTyped.entry?.length,
+        changes: bodyTyped.entry?.flatMap(e => e.changes.map(c => ({
           field: c.field,
           valueKeys: Object.keys(c.value || {}),
           hasMessages: !!c.value?.messages,
@@ -142,16 +217,24 @@ export async function POST(request: NextRequest) {
         }))),
       });
       
-      // Salvar o payload bruto completo mesmo sem eventos específicos
+      // Salvar o payload bruto completo em webhook_messages (tipo genérico)
       const supabase = getSupabaseClient();
-      const result = await supabase.from('whatsapp_messages').insert({
+      const rawWabaId = bodyTyped.entry[0]?.id ?? null;
+      const bmForRaw = rawWabaId ? await getBmByWabaId(rawWabaId) : null;
+      const wabaNameForRaw = rawWabaId ? await getWabaName(rawWabaId) : null;
+      const result = await supabase.from('webhook_messages').insert({
         message_id: `raw_${Date.now()}_${Math.random().toString(36).substring(7)}`,
         from_number: 'unknown',
-        to_number: body.entry[0]?.changes[0]?.value?.metadata?.phone_number_id || 'unknown',
+        meta_waba_id: rawWabaId,
+        waba_name: wabaNameForRaw,
+        meta_phone_number_id: bodyTyped.entry[0]?.changes[0]?.value?.metadata?.phone_number_id ?? null,
+        meta_bm_id: bmForRaw?.bm_id ?? null,
+        bm_name: bmForRaw?.bm_name ?? null,
         timestamp: Math.floor(Date.now() / 1000),
+        created_at: toSaoPauloTimestampString(),
         message_type: 'raw_webhook',
         message_body: `Nenhum evento processado. Payload completo salvo para análise.`,
-        raw_payload: body as any,
+        raw_payload: bodyTyped as any,
       });
 
       if (result.error) {
@@ -182,62 +265,116 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // SEGUNDO: Salvar eventos no banco (independente da resposta automática)
+    // SEGUNDO: Separar eventos de mensagens (webhook_messages) vs alertas (webhook_alerts)
+    const messageEvents = allEventsData.filter((e) => e.field === 'messages');
+    const alertEvents = allEventsData.filter(
+      (e) => e.field != null && WEBHOOK_ALERT_FIELDS.includes(e.field as any)
+    );
+
+    // Atualizar saúde no banco quando receber account_alerts ou business_capability_update (em background)
+    const wabaIdsToRefresh = [...new Set(alertEvents.map((e) => e.waba_id).filter((id): id is string => Boolean(id)))];
+    for (const wabaId of wabaIdsToRefresh) {
+      refreshHealthForWaba(wabaId).catch((err) =>
+        console.error('[WEBHOOK] refreshHealthForWaba falhou para waba_id', wabaId, err)
+      );
+    }
+
     const supabase = getSupabaseClient();
-    const insertPromises = allEventsData.map(async (eventData) => {
-      console.log('[DEBUG] Tentando salvar evento no Supabase:', {
+
+    // Inserir mensagens em webhook_messages
+    const messageInsertPromises = messageEvents.map(async (eventData) => {
+      const wabaId = eventData.waba_id ?? null;
+      const bm = wabaId ? await getBmByWabaId(wabaId) : null;
+      const wabaName = wabaId ? await getWabaName(wabaId) : null;
+      console.log('[DEBUG] Salvando evento em webhook_messages:', {
         message_id: eventData.message_id,
         message_type: eventData.message_type,
-        from: eventData.from_number,
-        body: eventData.message_body,
       });
-
-      const result = await supabase.from('whatsapp_messages').insert({
+      const result = await supabase.from('webhook_messages').insert({
         message_id: eventData.message_id,
         from_number: eventData.from_number,
-        to_number: eventData.to_number,
+        meta_waba_id: wabaId,
+        waba_name: wabaName,
+        meta_phone_number_id: eventData.to_number ?? null,
+        meta_bm_id: bm?.bm_id ?? null,
+        bm_name: bm?.bm_name ?? null,
         timestamp: eventData.timestamp,
+        created_at: toSaoPauloTimestampString(),
         message_type: eventData.message_type,
         message_body: eventData.message_body,
         raw_payload: eventData.raw_payload as any,
       });
-
       if (result.error) {
-        // Log do erro mas NÃO throw - não queremos interromper o fluxo
-        console.error('[DEBUG] Erro ao salvar evento (não crítico):', {
-          message_id: eventData.message_id,
-          message_type: eventData.message_type,
-          errorCode: result.error.code,
-          errorMessage: result.error.message,
-        });
+        console.error('[DEBUG] Erro ao salvar em webhook_messages:', result.error);
       }
-
       return result;
     });
 
-    const results = await Promise.allSettled(insertPromises);
+    // Inserir alertas em webhook_alerts
+    const alertInsertPromises = alertEvents.map(async (eventData) => {
+      let entity_type: string | null = null;
+      let entity_id: string | null = null;
+      let alert_type: string | null = null;
+      let alert_severity: string | null = null;
+      let alert_status: string | null = null;
+      let alert_description: string | null = null;
+      if (eventData.message_type === 'account_alert' && eventData.message_body) {
+        try {
+          const parsed = JSON.parse(eventData.message_body) as Record<string, unknown>;
+          entity_type = parsed.entity_type != null ? String(parsed.entity_type) : null;
+          entity_id = parsed.entity_id != null ? String(parsed.entity_id) : null;
+          alert_type = parsed.alert_type != null ? String(parsed.alert_type) : null;
+          alert_severity = parsed.alert_severity != null ? String(parsed.alert_severity) : null;
+          alert_status = parsed.alert_status != null ? String(parsed.alert_status) : null;
+          alert_description = parsed.alert_description != null ? String(parsed.alert_description) : null;
+        } catch {
+          // ignore parse error
+        }
+      }
+      const wabaId = eventData.waba_id ?? null;
+      const bm = wabaId ? await getBmByWabaId(wabaId) : null;
+      console.log('[DEBUG] Salvando evento em webhook_alerts:', { field: eventData.field });
+      const result = await supabase.from('webhook_alerts').insert({
+        meta_waba_id: wabaId,
+        meta_bm_id: bm?.bm_id ?? null,
+        bm_name: bm?.bm_name ?? null,
+        field: eventData.field ?? null,
+        object: bodyTyped.object ?? null,
+        entity_type,
+        entity_id,
+        alert_type,
+        alert_severity,
+        alert_status,
+        alert_description,
+        raw_payload: eventData.raw_payload as any,
+      });
+      if (result.error) {
+        console.error('[DEBUG] Erro ao salvar em webhook_alerts:', result.error);
+      }
+      return result;
+    });
 
-    // Verificar se houve erros (tanto rejected quanto errors do Supabase)
-    const errors = results.filter((result) => result.status === 'rejected');
+    const [messageResults, alertResults] = await Promise.all([
+      Promise.allSettled(messageInsertPromises),
+      Promise.allSettled(alertInsertPromises),
+    ]);
+
+    const allResults = [...messageResults, ...alertResults];
+    const errors = allResults.filter((r) => r.status === 'rejected');
     if (errors.length > 0) {
-      console.error('Erros ao salvar eventos:', errors.map((e) => 
-        e.status === 'rejected' ? e.reason : 'unknown error'
+      console.error('Erros ao salvar eventos:', errors.map((e) =>
+        e.status === 'rejected' ? (e as PromiseRejectedResult).reason : 'unknown'
       ));
     }
 
-    // Contar sucessos (fulfilled sem erro do Supabase)
-    const successCount = results.filter((result) => {
-      if (result.status === 'fulfilled') {
-        // Verificar se o resultado do Supabase tem erro
-        return !result.value.error;
-      }
-      return false;
-    }).length;
-
-    const failedCount = allEventsData.length - successCount;
+    const successCount =
+      messageResults.filter((r) => r.status === 'fulfilled' && !(r.value as { error?: unknown }).error).length +
+      alertResults.filter((r) => r.status === 'fulfilled' && !(r.value as { error?: unknown }).error).length;
+    const totalSaved = messageEvents.length + alertEvents.length;
+    const failedCount = totalSaved - successCount;
 
     console.log(
-      `Webhook processado: ${successCount}/${allEventsData.length} eventos salvos${failedCount > 0 ? `, ${failedCount} falharam` : ''}`
+      `Webhook processado: ${successCount}/${totalSaved} eventos salvos (messages: ${messageEvents.length}, alerts: ${alertEvents.length})${failedCount > 0 ? `, ${failedCount} falharam` : ''}`
     );
 
     // Sempre retornar 200 OK para a Meta, mesmo se houver erros

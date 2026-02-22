@@ -1,0 +1,17 @@
+{
+  "VIVENTI": {
+    "id": "570123512482433",
+    "wabas": [
+      {
+        "id": "1724376938524122",
+        "name": "Viventi - Feirão De Acordos 3",
+        "phone_ids": ["1016451684884273"]
+      },
+      {
+        "id": "2297461150741748",
+        "name": "Viventi - Feirão De Acordos 2",
+        "phone_ids": ["921773327697136"]
+      }
+    ]
+  }
+}

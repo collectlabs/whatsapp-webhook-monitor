@@ -2,9 +2,13 @@
  * Módulo para envio de mensagens via WhatsApp Cloud API
  */
 
+import type { WhatsAppCredentials } from './whatsapp-accounts';
+
 interface SendMessageParams {
   to: string;
   message: string;
+  /** Opcional: quando informado, usa estas credenciais em vez do env (ex.: auto-reply pelo mesmo número) */
+  credentials?: WhatsAppCredentials;
 }
 
 interface WhatsAppApiResponse {
@@ -33,17 +37,15 @@ interface WhatsAppApiResponse {
 export async function sendWhatsAppMessage(
   params: SendMessageParams
 ): Promise<{ success: boolean; messageId?: string; error?: string }> {
-  const { to, message } = params;
+  const { to, message, credentials } = params;
 
-  // TESTE HARDCODED - REMOVER APÓS TESTE
-  const accessToken = process.env.WHATSAPP_ACCESS_TOKEN || 'EAAh53VyXftIBQnEZBP3j1lBfoGEXwcZAjqK6qQfp7scL4GCt5M1rMbbg9cc7WSlfERh5smsjd3yl8muquQZAbYUtFaDx0JZClfB98sLKGz124SUfToWYWIZB8ViGMU8EI7s9vvp0FXiPL1l5Aj6V8BS0MCZBsiixf2RP6nZCzmanKFif8xueXJ01jnZAgMZCtHgZDZD';
-  const phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID || '823349844204985';
-  
+  const accessToken = credentials?.accessToken ?? process.env.WHATSAPP_ACCESS_TOKEN;
+  const phoneNumberId = credentials?.phoneNumberId ?? process.env.WHATSAPP_PHONE_NUMBER_ID;
+
   console.log('[WHATSAPP_SENDER] Usando credenciais:', {
-    hasEnvToken: !!process.env.WHATSAPP_ACCESS_TOKEN,
-    hasEnvPhoneId: !!process.env.WHATSAPP_PHONE_NUMBER_ID,
-    tokenPreview: accessToken ? `${accessToken.substring(0, 15)}...` : 'undefined',
+    hasToken: !!accessToken,
     phoneNumberId,
+    fromCredentials: !!credentials,
   });
 
   // Validar parâmetros
@@ -52,6 +54,14 @@ export async function sendWhatsAppMessage(
     return {
       success: false,
       error: 'Parâmetros inválidos para envio de mensagem',
+    };
+  }
+
+  if (!accessToken || !phoneNumberId) {
+    console.error('[WHATSAPP_SENDER] Credenciais não configuradas');
+    return {
+      success: false,
+      error: 'Credenciais do WhatsApp não configuradas (env ou credentials)',
     };
   }
 

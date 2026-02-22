@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseClient } from '@/lib/supabase';
+import { toSaoPauloISOString, toSaoPauloTimestampString } from '@/lib/date-utils';
 
 /**
  * GET - Endpoint de rastreamento para cliques em botões CTA URL
@@ -23,17 +24,19 @@ export async function GET(request: NextRequest) {
       userPhone,
       buttonId,
       referrer,
-      timestamp: new Date().toISOString(),
+      timestamp: toSaoPauloISOString(),
     });
 
     // Salvar o evento de clique no Supabase
     if (targetUrl) {
       const supabase = getSupabaseClient();
-      const result = await supabase.from('whatsapp_messages').insert({
+      const result = await supabase.from('webhook_messages').insert({
         message_id: `cta_click_${Date.now()}_${Math.random().toString(36).substring(7)}`,
         from_number: userPhone || 'unknown',
-        to_number: 'unknown', // Não temos phone_number_id neste contexto
+        meta_waba_id: null,
+        meta_phone_number_id: null,
         timestamp: Math.floor(Date.now() / 1000),
+        created_at: toSaoPauloTimestampString(),
         message_type: 'cta_url_click',
         message_body: `CTA URL clicado: Botão "${buttonId}" -> ${targetUrl}`,
         raw_payload: {
@@ -42,7 +45,7 @@ export async function GET(request: NextRequest) {
           user_phone: userPhone,
           button_id: buttonId,
           referrer: referrer,
-          timestamp: new Date().toISOString(),
+          timestamp: toSaoPauloISOString(),
           user_agent: request.headers.get('user-agent'),
         } as any,
       });

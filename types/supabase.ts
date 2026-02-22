@@ -33,7 +33,73 @@ export type Database = {
         }
         Relationships: []
       }
-      whatsapp_messages: {
+      bms: {
+        Row: {
+          meta_bm_id: string
+          bm_uuid: string
+          name: string
+        }
+        Insert: {
+          meta_bm_id: string
+          bm_uuid?: string
+          name: string
+        }
+        Update: {
+          meta_bm_id?: string
+          bm_uuid?: string
+          name?: string
+        }
+        Relationships: []
+      }
+      wabas: {
+        Row: {
+          meta_waba_id: string
+          waba_uuid: string
+          bm_uuid: string
+          name: string
+          phone_ids: Json
+        }
+        Insert: {
+          meta_waba_id: string
+          waba_uuid?: string
+          bm_uuid: string
+          name: string
+          phone_ids?: Json
+        }
+        Update: {
+          meta_waba_id?: string
+          waba_uuid?: string
+          bm_uuid?: string
+          name?: string
+          phone_ids?: Json
+        }
+        Relationships: []
+      }
+      phone_numbers: {
+        Row: {
+          meta_phone_number_id: string
+          waba_uuid: string
+          display_phone_number: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          meta_phone_number_id: string
+          waba_uuid: string
+          display_phone_number?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          meta_phone_number_id?: string
+          waba_uuid?: string
+          display_phone_number?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      webhook_messages: {
         Row: {
           created_at: string | null
           from_number: string
@@ -43,7 +109,11 @@ export type Database = {
           message_type: string
           raw_payload: Json
           timestamp: number
-          to_number: string
+          meta_waba_id: string | null
+          waba_name: string | null
+          meta_phone_number_id: string | null
+          meta_bm_id: string | null
+          bm_name: string | null
         }
         Insert: {
           created_at?: string | null
@@ -54,7 +124,11 @@ export type Database = {
           message_type: string
           raw_payload: Json
           timestamp: number
-          to_number: string
+          meta_waba_id?: string | null
+          waba_name?: string | null
+          meta_phone_number_id?: string | null
+          meta_bm_id?: string | null
+          bm_name?: string | null
         }
         Update: {
           created_at?: string | null
@@ -65,14 +139,165 @@ export type Database = {
           message_type?: string
           raw_payload?: Json
           timestamp?: number
-          to_number?: string
+          meta_waba_id?: string | null
+          waba_name?: string | null
+          meta_phone_number_id?: string | null
+          meta_bm_id?: string | null
+          bm_name?: string | null
+        }
+        Relationships: []
+      }
+      webhook_alerts: {
+        Row: {
+          id: string
+          meta_waba_id: string | null
+          field: string | null
+          object: string | null
+          entity_type: string | null
+          entity_id: string | null
+          alert_type: string | null
+          alert_severity: string | null
+          alert_status: string | null
+          alert_description: string | null
+          raw_payload: Json
+          created_at: string
+          meta_bm_id: string | null
+          bm_name: string | null
+        }
+        Insert: {
+          id?: string
+          meta_waba_id?: string | null
+          field?: string | null
+          object?: string | null
+          entity_type?: string | null
+          entity_id?: string | null
+          alert_type?: string | null
+          alert_severity?: string | null
+          alert_status?: string | null
+          alert_description?: string | null
+          raw_payload: Json
+          created_at?: string
+          meta_bm_id?: string | null
+          bm_name?: string | null
+        }
+        Update: {
+          id?: string
+          meta_waba_id?: string | null
+          field?: string | null
+          object?: string | null
+          entity_type?: string | null
+          entity_id?: string | null
+          alert_type?: string | null
+          alert_severity?: string | null
+          alert_status?: string | null
+          alert_description?: string | null
+          raw_payload?: Json
+          created_at?: string
+          meta_bm_id?: string | null
+          bm_name?: string | null
+        }
+        Relationships: []
+      }
+      auto_reply_phone_config: {
+        Row: {
+          meta_phone_number_id: string
+          enabled: boolean
+          message: string
+          allowed_for_sending: boolean
+          phone_number: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          meta_phone_number_id: string
+          enabled?: boolean
+          message?: string
+          allowed_for_sending?: boolean
+          phone_number?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          meta_phone_number_id?: string
+          enabled?: boolean
+          message?: string
+          allowed_for_sending?: boolean
+          phone_number?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      phone_number_meta: {
+        Row: {
+          meta_phone_number_id: string
+          meta_waba_id: string
+          quality_rating: string | null
+          verified_name: string | null
+          fetched_at: string
+          meta_bm_id: string | null
+          bm_name: string | null
+        }
+        Insert: {
+          meta_phone_number_id: string
+          meta_waba_id: string
+          quality_rating?: string | null
+          verified_name?: string | null
+          fetched_at?: string
+          meta_bm_id?: string | null
+          bm_name?: string | null
+        }
+        Update: {
+          meta_phone_number_id?: string
+          meta_waba_id?: string
+          quality_rating?: string | null
+          verified_name?: string | null
+          fetched_at?: string
+          meta_bm_id?: string | null
+          bm_name?: string | null
+        }
+        Relationships: []
+      }
+      waba_health_status: {
+        Row: {
+          meta_waba_id: string
+          meta_bm_id: string | null
+          bm_status: string | null
+          waba_status: string | null
+          app_id: string | null
+          app_status: string | null
+          fetched_at: string
+          bm_name: string | null
+          bm_uuid: string | null
+        }
+        Insert: {
+          meta_waba_id: string
+          meta_bm_id?: string | null
+          bm_status?: string | null
+          waba_status?: string | null
+          app_id?: string | null
+          app_status?: string | null
+          fetched_at?: string
+          bm_name?: string | null
+          bm_uuid?: string | null
+        }
+        Update: {
+          meta_waba_id?: string
+          meta_bm_id?: string | null
+          bm_status?: string | null
+          waba_status?: string | null
+          app_id?: string | null
+          app_status?: string | null
+          fetched_at?: string
+          bm_name?: string | null
+          bm_uuid?: string | null
         }
         Relationships: []
       }
       messages: {
         Row: {
           id: string
-          phone_number_id: string
+          meta_phone_number_id: string
           recipient_phone: string
           message_type: string
           template_name: string | null
@@ -86,10 +311,14 @@ export type Database = {
           sent_at: string | null
           delivered_at: string | null
           read_at: string | null
+          meta_waba_id: string | null
+          waba_name: string | null
+          meta_bm_id: string | null
+          bm_name: string | null
         }
         Insert: {
           id?: string
-          phone_number_id: string
+          meta_phone_number_id: string
           recipient_phone: string
           message_type: string
           template_name?: string | null
@@ -103,10 +332,14 @@ export type Database = {
           sent_at?: string | null
           delivered_at?: string | null
           read_at?: string | null
+          meta_waba_id?: string | null
+          waba_name?: string | null
+          meta_bm_id?: string | null
+          bm_name?: string | null
         }
         Update: {
           id?: string
-          phone_number_id?: string
+          meta_phone_number_id?: string
           recipient_phone?: string
           message_type?: string
           template_name?: string | null
@@ -120,6 +353,10 @@ export type Database = {
           sent_at?: string | null
           delivered_at?: string | null
           read_at?: string | null
+          meta_waba_id?: string | null
+          waba_name?: string | null
+          meta_bm_id?: string | null
+          bm_name?: string | null
         }
         Relationships: []
       }

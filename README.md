@@ -40,10 +40,33 @@ SUPABASE_SERVICE_ROLE_KEY=your_supabase_service_role_key
 # Webhook
 WEBHOOK_VERIFY_TOKEN=your_verify_token_here
 
-# WhatsApp Cloud API (para resposta automática)
-WHATSAPP_ACCESS_TOKEN=your_whatsapp_access_token
-WHATSAPP_PHONE_NUMBER_ID=your_phone_number_id
+# API - Token de segurança (obrigatório para usar a API de envio)
+API_KEY=your_api_key_here
+
+# WhatsApp Cloud API - BMs e WABAs
+# A estrutura (BMs, WABAs, phone_ids) fica nas tabelas bms e wabas no Supabase (veja migração em supabase/migrations/).
+# No .env: apenas um token por BM. O nome da variável deve ser WHATSAPP_ACCESS_TOKEN_<NOME_BM>, onde <NOME_BM> é o campo "name" da tabela bms.
+# Não é necessário WHATSAPP_ACCESS_TOKEN nem WHATSAPP_PHONE_NUMBER_ID (token e número vêm do Supabase + token por BM).
+# Exemplo: se existe uma BM com name = "VIVENTI" no Supabase:
+WHATSAPP_ACCESS_TOKEN_VIVENTI=EAA...
+# Outra BM (name = "OUTRA_OPERACAO" na tabela bms):
+# WHATSAPP_ACCESS_TOKEN_OUTRA_OPERACAO=EAA...
+
+# OpenAI - Respostas Inteligentes com IA (opcional)
+OPENAI_API_KEY=sk-your-openai-api-key
+AI_ENABLED=true
+AI_MODEL=gpt-4o-mini
 ```
+
+### Respostas com IA (OpenAI Agents)
+
+A aplicação suporta respostas inteligentes usando OpenAI Agents SDK. Quando configurado:
+
+1. **AI_ENABLED**: Define se a IA está habilitada (`true`/`false`). Default: `true`
+2. **OPENAI_API_KEY**: Chave da API OpenAI (obrigatória para usar IA)
+3. **AI_MODEL**: Modelo a ser usado. Default: `gpt-4o-mini`. Opções: `gpt-4o`, `gpt-4o-mini`, `gpt-4-turbo`
+
+Se a IA não estiver configurada ou ocorrer erro, o sistema usa a resposta padrão como fallback.
 
 ### Configuração da Resposta Automática
 
@@ -63,7 +86,46 @@ INSERT INTO response_config (default_message, enabled)
 VALUES ('Olá! Agradecemos o seu retorno. Como podemos ajudar?', true);
 ```
 
-A resposta automática será enviada para qualquer mensagem recebida do cliente (texto, imagem, áudio, vídeo, documento, localização ou clique em botão).
+A resposta automática é configurada **por número** na tabela `auto_reply_phone_config` (ativação e mensagem por `phone_number_id`). A tabela `response_config` continua como fallback de mensagem quando a config do número não define texto.
+
+### BMs e WABAs (Supabase)
+
+As contas WhatsApp são gerenciadas pelas tabelas `bms` e `wabas` no Supabase. No .env você define apenas o token de cada BM: `WHATSAPP_ACCESS_TOKEN_<name>`, onde `name` é o campo da tabela `bms`.
+
+1. Execute a migração `supabase/migrations/20250222100000_create_bms_and_wabas.sql` (cria `bms` e `wabas`).
+2. Insira uma BM: `INSERT INTO bms (name, meta_bm_id) VALUES ('VIVENTI', '570123512482433');`
+3. Insira as WABAs (use o `id` retornado da BM ou busque por name): `INSERT INTO wabas (id, name, bm_id, phone_ids) VALUES ('1724376938524122', 'Viventi - Feirão 3', (SELECT id FROM bms WHERE name = 'VIVENTI'), '["1016451684884273"]');`
+4. No .env: `WHATSAPP_ACCESS_TOKEN_VIVENTI=EAA...`
+
+Para migrar dados que estavam em `WHATSAPP_ACCOUNTS_*`, copie o JSON (sem o token) para um arquivo no formato de `scripts/accounts-backup.example.json` e execute: `SUPABASE_URL=... SUPABASE_SERVICE_ROLE_KEY=... node scripts/seed-whatsapp-accounts.js scripts/accounts-backup.json`. Ou insira manualmente via SQL no Supabase.
+
+### Resposta automática e envio por número (`auto_reply_phone_config`)
+
+- **enabled**: ativa/desativa resposta automática naquele número.
+- **message**: texto da mensagem automática (fallback: `response_config.default_message`).
+- **allowed_for_sending**: se `true`, o número pode ser usado na API de envio (send-template); se `false`, o envio por esse número é bloqueado. Default: `true`.
+
+Exemplo no Supabase:
+
+```sql
+INSERT INTO auto_reply_phone_config (phone_number_id, enabled, message, allowed_for_sending)
+VALUES ('823349844204985', true, 'Olá! Em breve responderemos.', true);
+```
+
+Para desabilitar o uso de um número na API de envio: `UPDATE auto_reply_phone_config SET allowed_for_sending = false WHERE phone_number_id = '...';`
+
+### API de envio de template
+
+- **Autenticação**: header `X-API-Key` com o valor de `API_KEY` (obrigatório).
+- **WABA e número**: no body, `waba_id` é **obrigatório** (id na tabela `wabas` no Supabase); `phone_id` é opcional (usa o primeiro da conta se omitido). O token da Meta **não** é enviado na requisição; fica no .env como `WHATSAPP_ACCESS_TOKEN_<NOME_BM>`.
+- **Contas**: BMs e WABAs são configuradas nas tabelas `bms` e `wabas` no Supabase. No .env, defina um token por BM: `WHATSAPP_ACCESS_TOKEN_<name da BM>`.
+
+A resposta automática será enviada apenas para números que tiverem uma linha em `auto_reply_phone_config` com `enabled = true`. Números com `allowed_for_sending = false` não podem ser usados na API de envio.
+
+### API de listagem de números (GET /api/phone-numbers)
+
+- **Autenticação**: header `X-API-Key` (obrigatório).
+- **Resposta**: lista de números com `waba_id`, `waba_name`, `bm_id`, `bm_name`, `phone_id`, `allowed_for_sending`, `auto_reply_enabled`, `message` e `phone_number` (id do Meta). Útil para consultar status de envio e quais números estão habilitados por WABA/BM.
 
 ### Configuração do Webhook na Meta
 
@@ -76,16 +138,13 @@ A resposta automática será enviada para qualquer mensagem recebida do cliente 
 
 ## Estrutura de Dados
 
-Os webhooks são salvos na tabela `whatsapp_messages` do Supabase com os seguintes campos:
+Os webhooks são salvos em duas tabelas no Supabase:
 
-- `message_id`: ID único da mensagem
-- `from_number`: Número do remetente
-- `to_number`: Número de destino (phone_number_id)
-- `timestamp`: Timestamp da mensagem
-- `message_type`: Tipo da mensagem (text, image, audio, etc.)
-- `message_body`: Conteúdo da mensagem (quando aplicável)
-- `raw_payload`: Payload completo do webhook (JSONB)
-- `created_at`: Data de criação do registro
+**webhook_messages** — eventos do tipo "messages" (mensagens recebidas, statuses, cliques CTA, payload bruto):
+- `message_id`, `from_number`, `to_number`, `timestamp`, `message_type`, `message_body`, `raw_payload`, `created_at`, `waba_id`, `phone_number_id`, `bm_id`, `bm_name`
+
+**webhook_alerts** — eventos de alerta (account_alerts, business_capability_update, template updates, etc.):
+- `waba_id` (entry.id do payload), `bm_id`, `bm_name`, `field`, `object`, `entity_type`, `entity_id`, `alert_type`, `alert_severity`, `alert_status`, `alert_description`, `raw_payload`, `created_at`
 
 ## Desenvolvimento
 
