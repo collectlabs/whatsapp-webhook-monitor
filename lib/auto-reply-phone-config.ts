@@ -80,6 +80,7 @@ export async function getConfigForPhoneIds(
 
 /**
  * Retorna todos os números cadastrados na tabela (fonte da verdade para a listagem).
+ * Tenta meta_phone_number_id (schema novo); se a coluna não existir, usa phone_number_id (schema antigo).
  */
 export async function getAllPhoneConfigs(): Promise<AutoReplyPhoneConfig[]> {
   const supabase = getSupabaseClient();
@@ -89,6 +90,17 @@ export async function getAllPhoneConfigs(): Promise<AutoReplyPhoneConfig[]> {
     .order('meta_phone_number_id');
 
   if (error) {
+    if (error.message?.includes('meta_phone_number_id') || error.message?.includes('column')) {
+      const { data: dataLegacy, error: errLegacy } = await supabase
+        .from('auto_reply_phone_config')
+        .select('phone_number_id, enabled, message, allowed_for_sending, phone_number')
+        .order('phone_number_id');
+      if (!errLegacy && dataLegacy?.length) {
+        return dataLegacy.map((row: { phone_number_id: string; enabled: boolean; message: string; allowed_for_sending: boolean; phone_number: string | null }) =>
+          rowToConfig({ ...row, meta_phone_number_id: row.phone_number_id })
+        );
+      }
+    }
     console.error('[AUTO_REPLY_PHONE_CONFIG] Erro ao buscar todos os configs:', error);
     return [];
   }

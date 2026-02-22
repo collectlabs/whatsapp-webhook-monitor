@@ -108,7 +108,7 @@ export async function savePhoneNumberMeta(
   );
   if (error) {
     console.error('[META_PHONE_HEALTH] savePhoneNumberMeta:', error);
-    throw error;
+    // Não propaga para não derrubar a API; dados serão preenchidos quando o schema estiver correto.
   }
 }
 
@@ -158,7 +158,7 @@ export async function saveWabaHealthStatus(
   );
   if (error) {
     console.error('[META_PHONE_HEALTH] saveWabaHealthStatus:', error);
-    throw error;
+    // Não propaga para não derrubar a API; dados serão preenchidos quando o schema estiver correto.
   }
 }
 

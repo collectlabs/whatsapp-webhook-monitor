@@ -46,19 +46,37 @@ async function buildWabaMap(): Promise<Record<string, WabaEntry>> {
 
   const supabase = getSupabaseClient();
 
+  type WabaRowMin = { meta_waba_id: string; waba_uuid?: string; id?: string; bm_uuid: string; name: string };
+  let rows: WabaRowMin[] = [];
+  let wabaIdByUuid: Record<string, string> = {}; // waba_uuid ou id -> meta_waba_id
+  let phoneIdsByMetaWabaId: Record<string, string[]> = {};
+
   const { data: wabas, error: wabasError } = await supabase
     .from('wabas')
     .select('meta_waba_id, waba_uuid, bm_uuid, name');
 
   if (wabasError) {
-    console.error('[whatsapp-accounts] Erro ao carregar WABAs do Supabase:', wabasError);
-    throw new Error(`Falha ao carregar contas WhatsApp do Supabase: ${wabasError.message}`);
+    const msg = wabasError.message ?? '';
+    if (msg.includes('waba_uuid') || msg.includes('meta_waba_id') || msg.includes('bm_uuid')) {
+      const { data: wabasLegacy, error: errLegacy } = await supabase
+        .from('wabas')
+        .select('id, meta_waba_id, bm_uuid, name');
+      if (errLegacy) {
+        console.error('[whatsapp-accounts] Erro ao carregar WABAs (fallback):', errLegacy);
+        throw new Error(`Falha ao carregar contas WhatsApp do Supabase: ${errLegacy.message}`);
+      }
+      rows = (wabasLegacy ?? []) as WabaRowMin[];
+      wabaIdByUuid = Object.fromEntries(rows.map((w) => [String(w.id ?? w.meta_waba_id), w.meta_waba_id]));
+    } else {
+      console.error('[whatsapp-accounts] Erro ao carregar WABAs do Supabase:', wabasError);
+      throw new Error(`Falha ao carregar contas WhatsApp do Supabase: ${msg}`);
+    }
+  } else {
+    rows = (wabas ?? []) as WabaRowMin[];
+    wabaIdByUuid = Object.fromEntries(rows.map((w) => [String(w.waba_uuid ?? w.meta_waba_id), w.meta_waba_id]));
   }
 
-  const rows = (wabas ?? []) as Omit<WabaRow, 'phone_ids'>[];
-  const wabaUuids = rows.map((w) => w.waba_uuid).filter(Boolean);
-
-  const phoneIdsByWabaUuid: Record<string, string[]> = {};
+  const wabaUuids = rows.map((w) => (w.waba_uuid ?? w.id) as string).filter(Boolean);
   if (wabaUuids.length > 0) {
     const { data: phones, error: phonesError } = await supabase
       .from('phone_numbers')
@@ -66,9 +84,25 @@ async function buildWabaMap(): Promise<Record<string, WabaEntry>> {
       .in('waba_uuid', wabaUuids);
     if (!phonesError && phones) {
       for (const p of phones as { waba_uuid: string; meta_phone_number_id: string }[]) {
-        const u = p.waba_uuid;
-        if (!phoneIdsByWabaUuid[u]) phoneIdsByWabaUuid[u] = [];
-        phoneIdsByWabaUuid[u].push(String(p.meta_phone_number_id).trim());
+        const metaWabaId = wabaIdByUuid[p.waba_uuid];
+        if (metaWabaId) {
+          if (!phoneIdsByMetaWabaId[metaWabaId]) phoneIdsByMetaWabaId[metaWabaId] = [];
+          phoneIdsByMetaWabaId[metaWabaId].push(String(p.meta_phone_number_id).trim());
+        }
+      }
+    } else if (phonesError && (phonesError.message?.includes('waba_uuid') || phonesError.message?.includes('meta_phone_number_id'))) {
+      const { data: phonesLegacy } = await supabase
+        .from('phone_numbers')
+        .select('waba_id, phone_number_id')
+        .in('waba_id', wabaUuids);
+      if (phonesLegacy) {
+        for (const p of phonesLegacy as { waba_id: string; phone_number_id: string }[]) {
+          const metaWabaId = wabaIdByUuid[p.waba_id];
+          if (metaWabaId) {
+            if (!phoneIdsByMetaWabaId[metaWabaId]) phoneIdsByMetaWabaId[metaWabaId] = [];
+            phoneIdsByMetaWabaId[metaWabaId].push(String(p.phone_number_id).trim());
+          }
+        }
       }
     }
   }
@@ -101,7 +135,7 @@ async function buildWabaMap(): Promise<Record<string, WabaEntry>> {
       continue;
     }
 
-    const phoneIds = phoneIdsByWabaUuid[w.waba_uuid] ?? [];
+    const phoneIds = phoneIdsByMetaWabaId[w.meta_waba_id] ?? [];
 
     const wabaIdKey = w.meta_waba_id?.trim();
     if (!wabaIdKey) continue;
