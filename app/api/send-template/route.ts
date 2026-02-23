@@ -7,7 +7,7 @@ import {
   ButtonParameter,
 } from '@/lib/template-sender';
 import { getCredentials, getWabaName, getBmByWabaId } from '@/lib/whatsapp-accounts';
-import { isAllowedForSending } from '@/lib/auto-reply-phone-config';
+import { isEnabledForSendingByHierarchy } from '@/lib/sending-hierarchy';
 import { refreshHealthForWaba } from '@/lib/meta-phone-health';
 import { toSaoPauloISOString, toSaoPauloTimestampString } from '@/lib/date-utils';
 
@@ -127,12 +127,17 @@ export async function POST(request: NextRequest) {
     }
 
     const phoneNumberId = credentials.phoneNumberId;
+    const wabaId = body.waba_id!.trim();
 
-    // 4.1 Verificar se o número está habilitado para envio (allowed_for_sending na config)
-    const allowed = await isAllowedForSending(phoneNumberId);
-    if (!allowed) {
+    // 4.1 Verificar hierarquia BM/WABA/número (enabled_for_sending em bms, wabas, phone_numbers)
+    const hierarchyAllowed = await isEnabledForSendingByHierarchy(wabaId, phoneNumberId);
+    if (!hierarchyAllowed) {
       return NextResponse.json(
-        { success: false, error: `O número ${phoneNumberId} não está habilitado para envio. Ative "allowed_for_sending" na tabela auto_reply_phone_config.` },
+        {
+          success: false,
+          error:
+            'Disparo desativado para esta BM, WABA ou número. Ative "enabled_for_sending" nas tabelas bms, wabas e phone_numbers conforme a hierarquia.',
+        },
         { status: 400 }
       );
     }
@@ -147,7 +152,6 @@ export async function POST(request: NextRequest) {
     });
 
     const nowSp = toSaoPauloTimestampString();
-    const wabaId = body.waba_id!.trim();
     const wabaName = await getWabaName(wabaId);
     const bm = await getBmByWabaId(wabaId);
 

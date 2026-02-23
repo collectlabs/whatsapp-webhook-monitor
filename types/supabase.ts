@@ -80,6 +80,9 @@ export type Database = {
           meta_phone_number_id: string
           waba_uuid: string
           display_phone_number: string | null
+          enabled_for_sending: boolean
+          auto_reply_enabled: boolean
+          auto_reply_message: string | null
           created_at: string
           updated_at: string
         }
@@ -87,6 +90,9 @@ export type Database = {
           meta_phone_number_id: string
           waba_uuid: string
           display_phone_number?: string | null
+          enabled_for_sending?: boolean
+          auto_reply_enabled?: boolean
+          auto_reply_message?: string | null
           created_at?: string
           updated_at?: string
         }
@@ -94,6 +100,9 @@ export type Database = {
           meta_phone_number_id?: string
           waba_uuid?: string
           display_phone_number?: string | null
+          enabled_for_sending?: boolean
+          auto_reply_enabled?: boolean
+          auto_reply_message?: string | null
           created_at?: string
           updated_at?: string
         }
@@ -195,36 +204,6 @@ export type Database = {
           created_at?: string
           meta_bm_id?: string | null
           bm_name?: string | null
-        }
-        Relationships: []
-      }
-      auto_reply_phone_config: {
-        Row: {
-          meta_phone_number_id: string
-          enabled: boolean
-          message: string
-          allowed_for_sending: boolean
-          phone_number: string | null
-          created_at: string
-          updated_at: string
-        }
-        Insert: {
-          meta_phone_number_id: string
-          enabled?: boolean
-          message?: string
-          allowed_for_sending?: boolean
-          phone_number?: string | null
-          created_at?: string
-          updated_at?: string
-        }
-        Update: {
-          meta_phone_number_id?: string
-          enabled?: boolean
-          message?: string
-          allowed_for_sending?: boolean
-          phone_number?: string | null
-          created_at?: string
-          updated_at?: string
         }
         Relationships: []
       }

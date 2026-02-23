@@ -86,7 +86,7 @@ INSERT INTO response_config (default_message, enabled)
 VALUES ('Olá! Agradecemos o seu retorno. Como podemos ajudar?', true);
 ```
 
-A resposta automática é configurada **por número** na tabela `auto_reply_phone_config` (ativação e mensagem por `phone_number_id`). A tabela `response_config` continua como fallback de mensagem quando a config do número não define texto.
+A resposta automática é configurada **por número** na tabela `phone_numbers` (colunas `auto_reply_enabled` e `auto_reply_message`). A tabela `response_config` continua como fallback de mensagem quando a mensagem do número não está definida.
 
 ### BMs e WABAs (Supabase)
 
@@ -99,20 +99,24 @@ As contas WhatsApp são gerenciadas pelas tabelas `bms` e `wabas` no Supabase. N
 
 Para migrar dados que estavam em `WHATSAPP_ACCOUNTS_*`, copie o JSON (sem o token) para um arquivo no formato de `scripts/accounts-backup.example.json` e execute: `SUPABASE_URL=... SUPABASE_SERVICE_ROLE_KEY=... node scripts/seed-whatsapp-accounts.js scripts/accounts-backup.json`. Ou insira manualmente via SQL no Supabase.
 
-### Resposta automática e envio por número (`auto_reply_phone_config`)
+### Resposta automática e envio por número
 
-- **enabled**: ativa/desativa resposta automática naquele número.
-- **message**: texto da mensagem automática (fallback: `response_config.default_message`).
-- **allowed_for_sending**: se `true`, o número pode ser usado na API de envio (send-template); se `false`, o envio por esse número é bloqueado. Default: `true`.
+- **Resposta automática** (habilitar e mensagem por número) fica na tabela **`phone_numbers`**:
+  - **auto_reply_enabled**: ativa/desativa resposta automática naquele número (default: `false`).
+  - **auto_reply_message**: texto da mensagem automática (nullable; fallback: `response_config.default_message`).
+- **Permissão de envio** (hierarquia BM/WABA/número) fica em **`enabled_for_sending`** nas tabelas `bms`, `wabas` e `phone_numbers`.
+- **Número para exibição** fica em **`phone_numbers.display_phone_number`**.
 
 Exemplo no Supabase:
 
 ```sql
-INSERT INTO auto_reply_phone_config (phone_number_id, enabled, message, allowed_for_sending)
-VALUES ('823349844204985', true, 'Olá! Em breve responderemos.', true);
-```
+-- Habilitar resposta automática e definir mensagem
+UPDATE phone_numbers SET auto_reply_enabled = true, auto_reply_message = 'Olá! Em breve responderemos.'
+WHERE meta_phone_number_id = '823349844204985';
 
-Para desabilitar o uso de um número na API de envio: `UPDATE auto_reply_phone_config SET allowed_for_sending = false WHERE phone_number_id = '...';`
+-- Desabilitar uso do número na API de envio
+UPDATE phone_numbers SET enabled_for_sending = false WHERE meta_phone_number_id = '...';
+```
 
 ### API de envio de template
 
@@ -120,7 +124,7 @@ Para desabilitar o uso de um número na API de envio: `UPDATE auto_reply_phone_c
 - **WABA e número**: no body, `waba_id` é **obrigatório** (id na tabela `wabas` no Supabase); `phone_id` é opcional (usa o primeiro da conta se omitido). O token da Meta **não** é enviado na requisição; fica no .env como `WHATSAPP_ACCESS_TOKEN_<NOME_BM>`.
 - **Contas**: BMs e WABAs são configuradas nas tabelas `bms` e `wabas` no Supabase. No .env, defina um token por BM: `WHATSAPP_ACCESS_TOKEN_<name da BM>`.
 
-A resposta automática será enviada apenas para números que tiverem uma linha em `auto_reply_phone_config` com `enabled = true`. Números com `allowed_for_sending = false` não podem ser usados na API de envio.
+A resposta automática será enviada apenas para números com `auto_reply_enabled = true` em `phone_numbers`. Números com `enabled_for_sending = false` (em `bms`, `wabas` ou `phone_numbers`) não podem ser usados na API de envio.
 
 ### API de listagem de números (GET /api/phone-numbers)
 

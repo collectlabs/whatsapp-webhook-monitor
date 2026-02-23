@@ -1,6 +1,6 @@
 /**
- * Serviço de resposta automática para mensagens do WhatsApp
- * Configuração por número (auto_reply_phone_config): ativar/desativar e mensagem.
+ * Serviço de resposta automática para mensagens do WhatsApp.
+ * Configuração por número (phone_numbers.auto_reply_enabled / auto_reply_message).
  * Suporta respostas via IA (OpenAI Agents) ou mensagem fixa por número.
  */
 
@@ -16,7 +16,7 @@ const REPLY_MESSAGE_TYPES = ['text', 'button', 'audio'];
 
 /**
  * Verifica se a mensagem tem tipo e remetente válidos para resposta automática.
- * A decisão "este número tem auto-reply habilitado?" é feita em processAutoReply via auto_reply_phone_config.
+ * A decisão "este número tem auto-reply habilitado?" é feita em processAutoReply via phone_numbers.
  */
 export function shouldSendAutoReply(messageData: WhatsAppMessageData): boolean {
   const { message_type, from_number, to_number } = messageData;
@@ -64,7 +64,7 @@ export async function processAutoReply(messageData: WhatsAppMessageData): Promis
     return;
   }
 
-  // Config por número: ativar/desativar e mensagem (auto_reply_phone_config)
+  // Config por número: ativar/desativar e mensagem (phone_numbers)
   const phoneConfig = await getAutoReplyConfigForPhone(messageData.to_number);
   if (!phoneConfig || !phoneConfig.enabled) {
     console.log('[AUTO_REPLY] Número sem resposta automática habilitada:', messageData.to_number);
