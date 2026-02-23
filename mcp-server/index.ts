@@ -87,7 +87,7 @@ Exemplo com botões:
     name: z.string().describe('Nome do template (snake_case, sem espaços ou caracteres especiais)'),
     language: z.string().describe('Código do idioma (ex: "pt_BR", "en_US")'),
     category: z.enum(['MARKETING', 'UTILITY', 'AUTHENTICATION']).describe('Categoria do template'),
-    components: z.array(z.record(z.unknown())).optional()
+    components: z.array(z.record(z.string(), z.unknown())).optional()
       .describe('Array de componentes do template seguindo a API da Meta (HEADER, BODY, FOOTER, BUTTONS)'),
   },
   async ({ name, language, category, components }) => {
