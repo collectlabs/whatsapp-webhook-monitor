@@ -9,6 +9,7 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.26.0",
     "@openai/agents": "^0.4.2",
     "@supabase/supabase-js": "^2.39.3",
     "next": "^14.1.0",
