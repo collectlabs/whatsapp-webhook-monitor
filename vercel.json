@@ -1,0 +1,8 @@
+{
+  "crons": [
+    {
+      "path": "/api/template-analytics/collect",
+      "schedule": "0 9 * * *"
+    }
+  ]
+}
